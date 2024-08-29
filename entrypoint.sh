@@ -1,50 +1,14 @@
 #!/bin/bash
 
-################################################
-#                    Colors                    #
-################################################
-
-#reset
+# Farben und Textstile
 NC='\033[0m'
-
-#normal colors
-RED='\033[0;31m'
-BLACK='\033[0;30m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
-WHITE='\033[0;37m'
-DGRAY='\033[1;30m'
-
-#light colors
-LRED='\033[0;31m'
-LBLACK='\033[0;30m'
-LGREEN='\033[0;32m'
-LYELLOW='\033[1;33m'
-LBLUE='\033[1;34m'
 LPURPLE='\033[1;35m'
-LCYAN='\033[1;36m'
-LWHITE='\033[1;37m'
+DGRAY='\033[1;30m'
+YELLOW='\033[1;33m'
 
-#text types
-BOLD=$(tput bold)
-NORMAL=$(tput sgr0)
-UNDERLINE=$(tput smul)
-BLINK=$(tput blink)
-REV=$(tput rev)
-STANDOUT=$(tput smso)
-
-#################################################
-#                   Functions                   #
-#################################################
-
-##############################
-#        Display Header      #
-##############################
-
-function display_header {
+# Funktionen
+header() {
     clear
     echo "
     ==========================================================================
@@ -60,192 +24,218 @@ function display_header {
     "  
 }
 
-##############################
-#        Dependencies        #
-##############################
-
-load () {
-  if [ -z "$JAVA_VERSION" ]; then
-    echo -e "${PURPLE}No Java version set! Please choose a Java version."
-    tip "You can set the Java version in the startup section to skip this prompt!"
-    echo -e "${PURPLE}Recommended values:"
-    echo -e "${PURPLE}Java ${LPURPLE}8${PURPLE} for Minecraft 1.12.2 or older"
-    echo -e "${PURPLE}Java ${LPURPLE}11${PURPLE} for Minecraft 1.12.2 to Minecraft 1.16.5"
-    echo -e "${PURPLE}Java ${LPURPLE}17${PURPLE} for Minecraft 1.17 or newer."
-    read -r -p "$(echo -e "${YELLOW}Selection: ${LPURPLE}")" JAVA_VERSION
-  fi
-  if [ "$JAVA_VERSION" = "8" ]; then
-    JAVA_VERSION="adopt@1.8-0"
-  elif [ "$JAVA_VERSION" = "11" ]; then
-    JAVA_VERSION="adopt@1.11.0-0"
-  elif [ "$JAVA_VERSION" = "17" ]; then
-    JAVA_VERSION="openjdk@1.17.0"
-  fi
-  echo -e "${PURPLE}Installing Java ${LPURPLE}${JAVA_VERSION}${PURPLE}!"
-  jabba install "$JAVA_VERSION" >> /dev/null 2>&1
-  sleep 0.5
-  jabba use "$JAVA_VERSION"
-}
-
-install_buildtools () {
-  if ! [ -f "/home/container/.breaker/buildtools/BuildTools.jar" ]; then
-    mkdir /home/container/.breaker/buildtools -p
-    echo -e "${DGRAY}Installing BuildTools..."
-    curl -s -L https://hub.spigotmc.org/jenkins/job/BuildTools/lastSuccessfulBuild/artifact/target/BuildTools.jar -o /home/container/.breaker/buildtools/BuildTools.jar
-  fi
-}
-
-##############################
-#           Spigot           #
-##############################
-
-compile_spigot () {
-  install_buildtools
-  cd /home/container/.breaker/buildtools || return
-  echo "${DGRAY}Compiling Spigot..."
-  java -Xms256M -Xmx"${SERVER_MEMORY}"M -jar BuildTools.jar --rev "${!1}" --compile SPIGOT | awk -W interactive -v c="$DGRAY" '{ print c $0 }'
-  mv /home/container/.breaker/buildtools/Spigot/Spigot-Server/target/spigot-*.jar /home/container/server.jar
-  find . ! -name 'BuildTools.jar' -exec rm -rf {} + > /dev/null 2>&1
-}
-
-install_spigot () {
-  load
-  SPIGOT_VERSIONS_LIST=$(curl -s https://hub.spigotmc.org/versions/ | grep -i -E -w '"(.*.json)"' -o | tr '\n' ', ' | awk '{ print "[" substr($0, 1, length($0)-1) "]" }')
-  ask_till_valid "${PURPLE}Please choose the Minecraft version you want to install! If you wish to view the list of available versions, enter ${YELLOW}list" "list" display_spigot_versions SPIGOT_VERSION "$(echo "${SPIGOT_VERSIONS_LIST}" | jq -r '. | map(. | sub(".json";""))')"
-  echo -e "${PURPLE}Installing Spigot ${LPURPLE}${SPIGOT_VERSION}"
-  compile_spigot SPIGOT_VERSION
-}
-
-display_spigot_versions () {
-  if [ -z "${SPIGOT_VERSIONS_LIST+x}" ];  then
-      SPIGOT_VERSIONS_LIST=$(curl -s https://hub.spigotmc.org/versions/ | grep -i -E -w '"(.*.json)"' -o | tr '\n' ', ' | awk '{ print "[" substr($0, 1, length($0)-1) "]" }')
-  fi
-  echo "$SPIGOT_VERSIONS_LIST" | jq -r '.[] | sub(".json";"") | select(test(".*\\..*")) | "\u001b[32m\(.)"'
-}
-
-##############################
-#           Purpur           #
-##############################
-
-install_purpur () {
-  PURPUR_VERSIONS_LIST=$(curl -s https://api.purpurmc.org/v2/purpur)
-  ask_till_valid "${PURPLE}Please choose the Minecraft version you want to install! If you wish to view the list of available versions, enter ${YELLOW}list" "list" display_purpur_versions PURPUR_VERSION "$(echo "${PURPUR_VERSIONS_LIST}" | jq -r '.versions')"
-  echo -e "${PURPLE}Installing Purpur ${LPURPLE}${PURPUR_VERSION}"
-  curl -s "https://api.purpurmc.org/v2/purpur/${PURPUR_VERSION}/latest/download" -o server.jar
-  echo -e "${PURPLE}Purpur installed!"
-  run_jar
-}
-
-display_purpur_versions () {
-  if [ -z "${PURPUR_VERSIONS_LIST+x}" ];  then
-      PURPUR_VERSIONS_LIST=$(curl -s https://api.purpurmc.org/v2/purpur)
+load_java() {
+    if [[ ! -d "/home/container/.jabba" ]]; then
+        echo -e "${PURPLE}Jabba not found! Installing Jabba..."
+        curl -sL https://github.com/shyiko/jabba/raw/master/install.sh | bash -s -- --skip-rc | awk -W interactive -v c="$DGRAY" '{ print c $0 }'
+        . /home/container/.jabba/jabba.sh
     fi
-    echo "$PURPUR_VERSIONS_LIST" | jq -r '.versions | .[] | "\u001b[32m\(.)"'
+    
+    source /home/container/.jabba/jabba.sh
+    
+    local JAVA_VERSION=$1
+    case $JAVA_VERSION in
+        8)  JAVA_VERSION="adopt@1.8-0" ;;
+        11) JAVA_VERSION="adopt@1.11.0-0" ;;
+        17) JAVA_VERSION="openjdk@1.17.0" ;;
+        21) JAVA_VERSION="openjdk@21.0.0" ;;
+        *)  echo -e "${YELLOW}Invalid Java version!"; exit 1 ;;
+    esac
+
+    echo -e "${PURPLE}Installing Java ${LPURPLE}${JAVA_VERSION}${PURPLE}..."
+    jabba install "$JAVA_VERSION" > /dev/null 2>&1
+    jabba use "$JAVA_VERSION"
 }
 
-#############################
-#           Paper           #
-#############################
 
-install_paper () {
-  PAPER_VERSIONS_LIST=$(curl -s https://papermc.io/api/v2/projects/paper)
-  ask_till_valid "${PURPLE}Please choose the Minecraft version you want to install! If you wish to view the list of available versions, enter ${YELLOW}list" "list" display_paper_versions PAPER_VERSION "$(echo "${PAPER_VERSIONS_LIST}" | jq -r '.versions')"
-  echo -e "${PURPLE}Installing PaperMC ${LPURPLE}${PAPER_VERSION}"
-  LATEST_BUILD=$(curl -s "https://papermc.io/api/v2/projects/paper/versions/${PAPER_VERSION}" | jq -r '.builds[-1]')
-  curl -s "https://papermc.io/api/v2/projects/paper/versions/${PAPER_VERSION}/builds/${LATEST_BUILD}/downloads/paper-${PAPER_VERSION}-${LATEST_BUILD}.jar" -o server.jar
-  echo -e "${PURPLE}PaperMC installed!"
-  run_jar
+download_file() {
+    local URL=$1
+    local OUTPUT=$2
+    curl -s -L "$URL" -o "$OUTPUT"
 }
 
-display_paper_versions () {
-  if [ -z "${PAPER_VERSIONS_LIST+x}" ];  then
-      PAPER_VERSIONS_LIST=$(curl -s https://papermc.io/api/v2/projects/paper)
-  fi
-  echo "$PAPER_VERSIONS_LIST" | jq -r '.versions | .[] | "\u001b[32m\(.)"'
+install_buildtools() {
+    local BUILD_DIR="/home/container/.breaker/buildtools"
+    mkdir -p "$BUILD_DIR"
+    download_file "https://hub.spigotmc.org/jenkins/job/BuildTools/lastSuccessfulBuild/artifact/target/BuildTools.jar" "$BUILD_DIR/BuildTools.jar"
 }
 
-##############################
-#    Install Minecraft Java  #
-##############################
-
-install_minecraft_java () {
-  display_header
-  echo -e "${YELLOW}=============================================================="
-  echo -e "              ${PURPLE}Select Minecraft Java Edition Server              "
-  echo -e "${YELLOW}=============================================================="
-  echo -e "${YELLOW}1${LPURPLE}) ${PURPLE}PaperMC"
-  echo -e "${YELLOW}2${LPURPLE}) ${PURPLE}Purpur"
-  echo -e "${YELLOW}3${LPURPLE}) ${PURPLE}Spigot"
-  echo -e "${YELLOW}0${LPURPLE}) ${PURPLE}Back"
-
-  read -r -p "$(echo -e "${PURPLE}Please select an option: ${LPURPLE}")" option
-
-  case $option in
-    1)
-      echo -e "${DGRAY}Installing PaperMC${DGRAY}"
-      install_paper
-      ;;
-    2)
-      echo -e "${DGRAY}Installing Purpur${DGRAY}"
-      install_purpur
-      ;;
-    3)
-      echo -e "${DGRAY}Installing Spigot${DGRAY}"
-      install_spigot
-      ;;
-    0)
-      echo -e "${DGRAY}Going back to main menu...${DGRAY}"
-      main_menu
-      ;;
-    *)
-      echo -e "${DGRAY}Invalid option! Please choose a valid option.${DGRAY}"
-      install_minecraft_java
-      ;;
-  esac
+compile_spigot() {
+    install_buildtools
+    local BUILD_DIR="/home/container/.breaker/buildtools"
+    cd "$BUILD_DIR" || return
+    java -Xms256M -Xmx"${SERVER_MEMORY}M" -jar BuildTools.jar --rev "$1" --compile SPIGOT | awk -W interactive -v c="$DGRAY" '{ print c $0 }'
+    mv "$BUILD_DIR/Spigot/Spigot-Server/target/spigot-*.jar" /home/container/server.jar
+    find . ! -name 'BuildTools.jar' -exec rm -rf {} + > /dev/null 2>&1
 }
 
-##############################
-#           Server           #
-##############################
-
-run_jar () {
-  echo -e "${PURPLE}Starting the Minecraft server..."
-  java -Xms"${SERVER_MEMORY}"M -Xmx"${SERVER_MEMORY}"M -jar server.jar nogui
+install_spigot() {
+    load_java "$1"
+    local SPIGOT_VERSION=$(curl -s https://hub.spigotmc.org/versions/ | grep -oP '"\K[^"]+')
+    echo -e "${PURPLE}Installing Spigot ${LPURPLE}${SPIGOT_VERSION}"
+    compile_spigot "$SPIGOT_VERSION"
 }
 
-main_menu () {
-  display_header
-  echo -e "${YELLOW}=============================================================="
-  echo -e "                          ${PURPLE}Main Menu                            "
-  echo -e "${YELLOW}=============================================================="
-  echo -e "${YELLOW}1${LPURPLE}) ${PURPLE}Install Minecraft Java Edition Server"
-  echo -e "${YELLOW}0${LPURPLE}) ${PURPLE}Exit"
-  
-  read -r -p "$(echo -e "${PURPLE}Please select an option: ${LPURPLE}")" option
-  
-  case $option in
-    1)
-      install_minecraft_java
-      ;;
-    0)
-      echo -e "${PURPLE}Exiting..."
-      exit 0
-      ;;
-    *)
-      echo -e "${RED}Invalid option! Please choose a valid option."
-      main_menu
-      ;;
-  esac
+install_purpur() {
+    local PURPUR_VERSION=$(curl -s https://api.purpurmc.org/v2/purpur | jq -r '.versions[-1]')
+    echo -e "${PURPLE}Installing Purpur ${LPURPLE}${PURPUR_VERSION}"
+    download_file "https://api.purpurmc.org/v2/purpur/${PURPUR_VERSION}/latest/download" "server.jar"
 }
 
-################################################
-#                  Variables                   #
-################################################
+install_paper() {
+    local PAPER_VERSION=$(curl -s https://papermc.io/api/v2/projects/paper | jq -r '.versions[-1]')
+    local LATEST_BUILD=$(curl -s "https://papermc.io/api/v2/projects/paper/versions/${PAPER_VERSION}" | jq -r '.builds[-1]')
+    echo -e "${PURPLE}Installing PaperMC ${LPURPLE}${PAPER_VERSION}-${LATEST_BUILD}"
+    download_file "https://papermc.io/api/v2/projects/paper/versions/${PAPER_VERSION}/builds/${LATEST_BUILD}/downloads/paper-${PAPER_VERSION}-${LATEST_BUILD}.jar" "server.jar"
+}
 
-SERVER_MEMORY="${1:-1024}" # Default to 1024M if not provided
+install_vanilla() {
+    local VERSION=$(curl -s https://launchermeta.mojang.com/mc/game/version_manifest.json | jq -r '.latest.release')
+    echo -e "${PURPLE}Installing Vanilla Minecraft ${LPURPLE}${VERSION}"
+    download_file "https://s3.amazonaws.com/Minecraft.Download/versions/${VERSION}/minecraft_server.${VERSION}.jar" "server.jar"
+}
 
-################################################
-#                  Execution                   #
-################################################
+install_forge() {
+    local VERSION=$(curl -s https://files.minecraftforge.net/maven/net/minecraftforge/forge/promotions_slim.json | jq -r '.promos["1.16.5-latest"]')
+    echo -e "${PURPLE}Installing Forge ${LPURPLE}${VERSION}"
+    download_file "https://files.minecraftforge.net/maven/net/minecraftforge/forge/${VERSION}/forge-${VERSION}-installer.jar" "forge-installer.jar"
+    java -jar forge-installer.jar --installServer
+    mv forge-*.jar server.jar
+}
 
+install_fabric() {
+    local FABRIC_VERSION=$(curl -s https://meta.fabricmc.net/v2/versions/loader | jq -r '.[0].version')
+    echo -e "${PURPLE}Installing Fabric ${LPURPLE}${FABRIC_VERSION}"
+    download_file "https://meta.fabricmc.net/v2/versions/loader/${FABRIC_VERSION}/profile/json" "fabric-installer.json"
+    java -jar fabric-installer.json --installServer
+}
+
+install_velocity() {
+    local VELOCITY_VERSION=$(curl -s https://api.papermc.io/v2/projects/velocity | jq -r '.versions[-1]')
+    echo -e "${PURPLE}Installing Velocity ${LPURPLE}${VELOCITY_VERSION}"
+    download_file "https://api.papermc.io/v2/projects/velocity/versions/${VELOCITY_VERSION}/latest/download" "server.jar"
+}
+
+install_waterfall() {
+    local WATERFALL_VERSION=$(curl -s https://papermc.io/api/v2/projects/waterfall | jq -r '.versions[-1]')
+    echo -e "${PURPLE}Installing Waterfall ${LPURPLE}${WATERFALL_VERSION}"
+    download_file "https://papermc.io/api/v2/projects/waterfall/versions/${WATERFALL_VERSION}/builds/latest/download" "server.jar"
+}
+
+install_bungeecord() {
+    local BUNGEE_VERSION=$(curl -s https://ci.md-5.net/job/BungeeCord/lastSuccessfulBuild/artifact/bootstrap/target | grep -oP 'BungeeCord-\d+\.jar')
+    echo -e "${PURPLE}Installing Bungeecord ${LPURPLE}${BUNGEE_VERSION}"
+    download_file "https://ci.md-5.net/job/BungeeCord/lastSuccessfulBuild/artifact/bootstrap/target/${BUNGEE_VERSION}" "server.jar"
+}
+
+install_pycord() {
+    echo -e "${PURPLE}Installing Pycord..."
+    pip install py-cord
+}
+
+install_discord_py() {
+    echo -e "${PURPLE}Installing discord.py..."
+    pip install discord.py
+}
+
+install_flask() {
+    echo -e "${PURPLE}Installing Flask..."
+    pip install Flask
+}
+
+install_fastapi() {
+    echo -e "${PURPLE}Installing FastAPI..."
+    pip install fastapi
+}
+
+start_server() {
+    echo -e "${PURPLE}Starting Minecraft server..."
+    MODIFIED_STARTUP=`eval echo $(echo ${STARTUP} | sed -e 's/{{/${/g' -e 's/}}/}/g')`
+    ${MODIFIED_STARTUP}
+}
+
+menu_minecraft_proxy() {
+    header
+    echo -e "${YELLOW}1${LPURPLE}) ${PURPLE}Install Velocity"
+    echo -e "${YELLOW}2${LPURPLE}) ${PURPLE}Install Waterfall"
+    echo -e "${YELLOW}3${LPURPLE}) ${PURPLE}Install Bungeecord"
+    echo -e "${YELLOW}0${LPURPLE}) ${PURPLE}Back"
+    
+    read -r -p "$(echo -e "${PURPLE}Select an option: ${LPURPLE}")" option
+
+    case $option in
+        1) install_velocity ;;
+        2) install_waterfall ;;
+        3) install_bungeecord ;;
+        0) main_menu ;;
+        *) echo -e "${DGRAY}Invalid option!"; menu_minecraft_proxy ;;
+    esac
+}
+
+menu_minecraft_java() {
+    header
+    echo -e "${YELLOW}1${LPURPLE}) ${PURPLE}Install PaperMC"
+    echo -e "${YELLOW}2${LPURPLE}) ${PURPLE}Install Purpur"
+    echo -e "${YELLOW}3${LPURPLE}) ${PURPLE}Install Spigot"
+    echo -e "${YELLOW}4${LPURPLE}) ${PURPLE}Install Vanilla"
+    echo -e "${YELLOW}5${LPURPLE}) ${PURPLE}Install Forge"
+    echo -e "${YELLOW}6${LPURPLE}) ${PURPLE}Install Fabric"
+    echo -e "${YELLOW}0${LPURPLE}) ${PURPLE}Back"
+    
+    read -r -p "$(echo -e "${PURPLE}Select an option: ${LPURPLE}")" option
+
+    case $option in
+        1) install_paper ;;
+        2) install_purpur ;;
+        3) install_spigot ;;
+        4) install_vanilla ;;
+        5) install_forge ;;
+        6) install_fabric ;;
+        0) main_menu ;;
+        *) echo -e "${DGRAY}Invalid option!"; menu_minecraft_java ;;
+    esac
+}
+
+menu_python() {
+    header
+    echo -e "${YELLOW}1${LPURPLE}) ${PURPLE}Install Pycord"
+    echo -e "${YELLOW}2${LPURPLE}) ${PURPLE}Install discord.py"
+    echo -e "${YELLOW}3${LPURPLE}) ${PURPLE}Install Flask"
+    echo -e "${YELLOW}4${LPURPLE}) ${PURPLE}Install FastAPI"
+    echo -e "${YELLOW}0${LPURPLE}) ${PURPLE}Back"
+    
+    read -r -p "$(echo -e "${PURPLE}Select an option: ${LPURPLE}")" option
+
+    case $option in
+        1) install_pycord ;;
+        2) install_discord_py ;;
+        3) install_flask ;;
+        4) install_fastapi ;;
+        0) main_menu ;;
+        *) echo -e "${DGRAY}Invalid option!"; menu_python ;;
+    esac
+}
+
+main_menu() {
+    header
+    echo -e "${YELLOW}1${LPURPLE}) ${PURPLE}Minecraft Proxy"
+    echo -e "${YELLOW}2${LPURPLE}) ${PURPLE}Minecraft Java Edition Server"
+    echo -e "${YELLOW}3${LPURPLE}) ${PURPLE}Python"
+    echo -e "${YELLOW}0${LPURPLE}) ${PURPLE}Exit"
+
+    read -r -p "$(echo -e "${PURPLE}Select an option: ${LPURPLE}")" option
+
+    case $option in
+        1) menu_minecraft_proxy ;;
+        2) menu_minecraft_java ;;
+        3) menu_python ;;
+        0) echo -e "${PURPLE}Exiting..."; exit 0 ;;
+        *) echo -e "${DGRAY}Invalid option!"; main_menu ;;
+    esac
+}
+
+# Variablen
+SERVER_MEMORY="${1:-1024}" 
+
+# Start
 main_menu
