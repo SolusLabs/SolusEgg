@@ -11,5 +11,5 @@ jobs:
       - name: Build and push the image
         run: |
           docker login --username blockplacer4 --password ${{ secrets.GH_PAT }} ghcr.io
-          docker build . --tag ghrc.io/soluslabs/solus-egg:latest
-          docker push ghrc.io/soluslabs/solus-egg:latest
+          docker build . --tag ghrc.io/blockplacer4/solus-egg:latest
+          docker push ghrc.io/blockplacer4/solus-egg:latest
