@@ -10,7 +10,6 @@ jobs:
       - uses: actions/checkout@v3
       - name: Build and push the image
         run: |
-          docker rmi --force ghrc.io/soluslabs/solus-egg:latest
           docker login --username blockplacer4 --password ${{ secrets.GH_PAT }} ghcr.io
-          docker build . --no-cache --tag ghrc.io/soluslabs/solus-egg:latest
+          docker build . --tag ghrc.io/soluslabs/solus-egg:latest
           docker push ghrc.io/soluslabs/solus-egg:latest
