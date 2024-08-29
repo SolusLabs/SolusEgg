@@ -10,6 +10,6 @@ jobs:
       - uses: actions/checkout@v3
       - name: Build and push the image
         run:
-          docker login --username blockplacer4 --password ${{ secrets.GH_PAT }}
+          docker login --username blockplacer4 --password ${{ secrets.GH_PAT }} ghcr.io
           docker build . --tag ghrc.io/blockplacer4/SolusEgg:latest
           docker push ghrc.io/blockplacer4/SolusEgg:latest
