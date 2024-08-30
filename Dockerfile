@@ -1,4 +1,4 @@
-FROM debian:buster-slim
+FROM debian:bookworm
 
 LABEL author="Janosch | Solus Labs" maintainer="info@janosch-bl.de"
 
