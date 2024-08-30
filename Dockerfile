@@ -2,14 +2,16 @@ FROM debian:bookworm
 
 LABEL author="Janosch | Solus Labs" maintainer="info@janosch-bl.de"
 
-RUN sudo apt update && sudo apt upgrade -y && \
-    sudo apt install -y git curl tar zip unzip python3 python3-pip locales && \
-    sudo update-locale lang=de_DE.UTF-8 && \
-    sudo useradd -m -d /home/container -s /bin/bash container
+RUN apt update && apt upgrade -y && \
+    apt install -y git curl tar zip unzip python3 python3-pip locales && \
+    update-locale lang=de_DE.UTF-8 && \
+    dpkg-reconfigure --frontend noninteractive locales && \
+    useradd -m -d /home/container -s /bin/bash container
 
 USER container
 
 ENV USER=container HOME=/home/container
+ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /home/container
 
