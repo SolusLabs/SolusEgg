@@ -35,10 +35,10 @@ ENV PATH=$JAVA_HOME/bin:$PATH
 WORKDIR /home/container
 
 # Startskript kopieren
-COPY start.sh .
+COPY entrypoint.sh .
 
 # Startskript ausführbar machen
-RUN chmod +x start.sh
+RUN chmod +x entrypoint.sh
 
 # Startbefehl
-ENTRYPOINT ["./start.sh"]
+ENTRYPOINT ["./entrypoint.sh"]
