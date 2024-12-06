@@ -1,18 +1,14 @@
 #!/bin/bash
 
-# Farben definieren
+# Farben
 BLUE='\033[0;34m'
-LIGHT_BLUE='\033[1;34m'
-CYAN='\033[0;36m'
-WHITE='\033[1;37m'
-YELLOW='\033[1;33m'
-DGRAY='\033[0;37m'
 RESET='\033[0m'
 
-# Arbeitsverzeichnis setzen
 cd /home/container || exit 1
 
-# Header-Funktion (beibehalten aus altem Code, aber Farbanpassungen möglich)
+SELECTION_FILE="/home/container/.selected_minecraft"
+
+# Header anzeigen
 header() {
     clear
     echo -e "
@@ -23,56 +19,54 @@ ${BLUE}╚█████╗░██║░░██║██║░░░░░�
 ${BLUE}░╚═══██╗██║░░██║██║░░░░░██║░░░██║░╚═══██╗  ██║░░░░░██╔══██║██╔══██╗░╚═══██╗
 ${BLUE}██████╔╝╚█████╔╝███████╗╚██████╔╝██████╔╝  ███████╗██║░░██║██████╦╝██████╔╝
 ${BLUE}╚═════╝░░╚════╝░╚══════╝░╚═════╝░╚═════╝░  ╚══════╝╚═╝░░╚═╝╚═════╝░╚═════╝░
-${BLUE}==========================================================================${RESET}
+${BLUE}==========================================================================
+${RESET}
 "
 }
 
-# Download-Funktion für Dateien
+# Download-Hilfsfunktion
 download_file() {
     local url="$1"
     local output="$2"
-    echo -e "${CYAN}Downloading: ${LIGHT_BLUE}${url}${RESET}"
+    echo "Downloading: $url"
     curl -s -L -o "${output}" "${url}"
     if [ $? -ne 0 ]; then
-        echo -e "${YELLOW}Download failed!${RESET}"
+        echo "Download failed!"
         exit 1
     fi
-    echo -e "${CYAN}Download complete: ${LIGHT_BLUE}${output}${RESET}"
+    echo "Download complete: ${output}"
 }
 
-# Installationsfunktionen
-install_purpur() {
-    local PURPUR_VERSION=$(curl -s https://api.purpurmc.org/v2/purpur | jq -r '.versions[-1]')
-    echo -e "${CYAN}Installing Purpur ${LIGHT_BLUE}${PURPUR_VERSION}${RESET}"
-    download_file "https://api.purpurmc.org/v2/purpur/${PURPUR_VERSION}/latest/download" "server.jar"
-}
-
+# Installationsfunktionen (Beispiele)
 install_paper() {
     local PAPER_VERSION=$(curl -s https://papermc.io/api/v2/projects/paper | jq -r '.versions[-1]')
     local LATEST_BUILD=$(curl -s "https://papermc.io/api/v2/projects/paper/versions/${PAPER_VERSION}" | jq -r '.builds[-1]')
-    echo -e "${CYAN}Installing PaperMC ${LIGHT_BLUE}${PAPER_VERSION}-${LATEST_BUILD}${RESET}"
+    echo "Installing PaperMC ${PAPER_VERSION}-${LATEST_BUILD}"
     download_file "https://papermc.io/api/v2/projects/paper/versions/${PAPER_VERSION}/builds/${LATEST_BUILD}/downloads/paper-${PAPER_VERSION}-${LATEST_BUILD}.jar" "server.jar"
 }
 
+install_purpur() {
+    local PURPUR_VERSION=$(curl -s https://api.purpurmc.org/v2/purpur | jq -r '.versions[-1]')
+    echo "Installing Purpur ${PURPUR_VERSION}"
+    download_file "https://api.purpurmc.org/v2/purpur/${PURPUR_VERSION}/latest/download" "server.jar"
+}
+
 install_spigot() {
-    # Spigot-Download ist etwas komplizierter, da es keinen direkten DL-Link gibt.
-    # Hier könnte man ggf. Buildtools verwenden, aber für das Beispiel nur ein Platzhalter:
-    local VERSION="1.20.1" # Beispiel-Version
-    echo -e "${CYAN}Installing Spigot ${LIGHT_BLUE}${VERSION}${RESET}"
-    # Diese URL ist fiktiv. In der Realität müsstest du hier BuildTools nutzen.
-    # download_file "https://example.com/spigot-${VERSION}.jar" "server.jar"
-    echo -e "${YELLOW}Spigot installation routine is not defined. Please integrate BuildTools if needed.${RESET}"
+    # Hier müsste eigentlich BuildTools eingesetzt werden, dies ist nur ein Platzhalter.
+    echo "Installing Spigot placeholder"
+    # download_file "irgendein_spigot_link" "server.jar"
+    echo "Spigot installation needs manual integration of BuildTools."
 }
 
 install_vanilla() {
     local VERSION=$(curl -s https://launchermeta.mojang.com/mc/game/version_manifest.json | jq -r '.latest.release')
-    echo -e "${CYAN}Installing Vanilla Minecraft ${LIGHT_BLUE}${VERSION}${RESET}"
+    echo "Installing Vanilla Minecraft ${VERSION}"
     download_file "https://s3.amazonaws.com/Minecraft.Download/versions/${VERSION}/minecraft_server.${VERSION}.jar" "server.jar"
 }
 
 install_forge() {
     local VERSION=$(curl -s https://maven.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json | jq -r '.promos["1.16.5-latest"]')
-    echo -e "${CYAN}Installing Forge ${LIGHT_BLUE}${VERSION}${RESET}"
+    echo "Installing Forge ${VERSION}"
     download_file "https://maven.minecraftforge.net/net/minecraftforge/forge/${VERSION}/forge-${VERSION}-installer.jar" "forge-installer.jar"
     java -jar forge-installer.jar --installServer
     mv forge-*.jar server.jar
@@ -80,101 +74,126 @@ install_forge() {
 }
 
 install_fabric() {
-    # Fabric Installation ist hier nur exemplarisch.
-    # Eigentlich benötigt man den Fabric Installer:
-    local FABRIC_LOADER=$(curl -s https://meta.fabricmc.net/v2/versions/loader | jq -r '.[0].version')
-    echo -e "${CYAN}Installing Fabric Loader ${LIGHT_BLUE}${FABRIC_LOADER}${RESET}"
-    # Beispiel: Der Fabric Installer, je nach Version.
-    # Für eine echte Installation müsste man den Installer korrekt einsetzen:
-    # download_file "https://maven.fabricmc.net/net/fabricmc/fabric-installer/${FABRIC_LOADER}/fabric-installer-${FABRIC_LOADER}.jar" "fabric-installer.jar"
-    # java -jar fabric-installer.jar server -mcversion $SOME_MC_VERSION -downloadMinecraft
-    # rm fabric-installer.jar
-    echo -e "${YELLOW}Fabric installation routine is simplified. Please integrate full installer steps.${RESET}"
+    echo "Fabric installation needs full integration. Placeholder."
 }
 
 install_velocity() {
     local VELOCITY_VERSION=$(curl -s https://api.papermc.io/v2/projects/velocity | jq -r '.versions[-1]')
     local LATEST_BUILD=$(curl -s "https://api.papermc.io/v2/projects/velocity/versions/${VELOCITY_VERSION}" | jq -r '.builds[-1]')
-    echo -e "${CYAN}Installing Velocity ${LIGHT_BLUE}${VELOCITY_VERSION}-${LATEST_BUILD}${RESET}"
+    echo "Installing Velocity ${VELOCITY_VERSION}-${LATEST_BUILD}"
     download_file "https://api.papermc.io/v2/projects/velocity/versions/${VELOCITY_VERSION}/builds/${LATEST_BUILD}/downloads/velocity-${VELOCITY_VERSION}-${LATEST_BUILD}.jar" "server.jar"
 }
 
 install_waterfall() {
     local WATERFALL_VERSION=$(curl -s https://papermc.io/api/v2/projects/waterfall | jq -r '.versions[-1]')
     local LATEST_BUILD=$(curl -s "https://papermc.io/api/v2/projects/waterfall/versions/${WATERFALL_VERSION}" | jq -r '.builds[-1]')
-    echo -e "${CYAN}Installing Waterfall ${LIGHT_BLUE}${WATERFALL_VERSION}-${LATEST_BUILD}${RESET}"
+    echo "Installing Waterfall ${WATERFALL_VERSION}-${LATEST_BUILD}"
     download_file "https://papermc.io/api/v2/projects/waterfall/versions/${WATERFALL_VERSION}/builds/${LATEST_BUILD}/downloads/waterfall-${WATERFALL_VERSION}-${LATEST_BUILD}.jar" "server.jar"
 }
 
 install_bungeecord() {
-    # Bungeecord braucht einen direkten Download vom Jenkins:
     local BUNGEE_BUILD=$(curl -s https://ci.md-5.net/job/BungeeCord/lastSuccessfulBuild/buildNumber)
-    echo -e "${CYAN}Installing Bungeecord build ${LIGHT_BLUE}${BUNGEE_BUILD}${RESET}"
+    echo "Installing Bungeecord build ${BUNGEE_BUILD}"
     download_file "https://ci.md-5.net/job/BungeeCord/lastSuccessfulBuild/artifact/bootstrap/target/BungeeCord.jar" "server.jar"
 }
 
+# Menüfunktionen
 menu_minecraft_proxy() {
     header
-    echo -e "${LIGHT_BLUE}=== Minecraft Proxy Installation ===${RESET}"
-    echo -e "${YELLOW}1${LIGHT_BLUE})${CYAN} Install Velocity"
-    echo -e "${YELLOW}2${LIGHT_BLUE})${CYAN} Install Waterfall"
-    echo -e "${YELLOW}3${LIGHT_BLUE})${CYAN} Install Bungeecord"
-    echo -e "${YELLOW}0${LIGHT_BLUE})${CYAN} Back"
-    echo -en "${CYAN}Select an option: ${LIGHT_BLUE}"
+    echo "=== Minecraft Proxy Installation ==="
+    echo "1) Install Velocity"
+    echo "2) Install Waterfall"
+    echo "3) Install Bungeecord"
+    echo "0) Back"
+    echo -n "Select an option: "
     read -r option
 
     case $option in
-        1) install_velocity ;;
-        2) install_waterfall ;;
-        3) install_bungeecord ;;
+        1) install_velocity; save_selection "Proxy" "Velocity"; create_start_script; exit 0 ;;
+        2) install_waterfall; save_selection "Proxy" "Waterfall"; create_start_script; exit 0 ;;
+        3) install_bungeecord; save_selection "Proxy" "Bungeecord"; create_start_script; exit 0 ;;
         0) main_menu ;;
-        *) echo -e "${DGRAY}Invalid option!${RESET}"; sleep 1; menu_minecraft_proxy ;;
+        *) echo "Invalid option!"; sleep 1; menu_minecraft_proxy ;;
     esac
 }
 
 menu_minecraft_java() {
     header
-    echo -e "${LIGHT_BLUE}=== Minecraft Java Edition Server Installation ===${RESET}"
-    echo -e "${YELLOW}1${LIGHT_BLUE})${CYAN} Install PaperMC"
-    echo -e "${YELLOW}2${LIGHT_BLUE})${CYAN} Install Purpur"
-    echo -e "${YELLOW}3${LIGHT_BLUE})${CYAN} Install Spigot"
-    echo -e "${YELLOW}4${LIGHT_BLUE})${CYAN} Install Vanilla"
-    echo -e "${YELLOW}5${LIGHT_BLUE})${CYAN} Install Forge"
-    echo -e "${YELLOW}6${LIGHT_BLUE})${CYAN} Install Fabric"
-    echo -e "${YELLOW}0${LIGHT_BLUE})${CYAN} Back"
-    echo -en "${CYAN}Select an option: ${LIGHT_BLUE}"
+    echo "=== Minecraft Java Edition Server Installation ==="
+    echo "1) Install PaperMC"
+    echo "2) Install Purpur"
+    echo "3) Install Spigot"
+    echo "4) Install Vanilla"
+    echo "5) Install Forge"
+    echo "6) Install Fabric"
+    echo "0) Back"
+    echo -n "Select an option: "
     read -r option
 
     case $option in
-        1) install_paper ;;
-        2) install_purpur ;;
-        3) install_spigot ;;
-        4) install_vanilla ;;
-        5) install_forge ;;
-        6) install_fabric ;;
+        1) install_paper; save_selection "Java" "PaperMC"; create_start_script; exit 0 ;;
+        2) install_purpur; save_selection "Java" "Purpur"; create_start_script; exit 0 ;;
+        3) install_spigot; save_selection "Java" "Spigot"; create_start_script; exit 0 ;;
+        4) install_vanilla; save_selection "Java" "Vanilla"; create_start_script; exit 0 ;;
+        5) install_forge; save_selection "Java" "Forge"; create_start_script; exit 0 ;;
+        6) install_fabric; save_selection "Java" "Fabric"; create_start_script; exit 0 ;;
         0) main_menu ;;
-        *) echo -e "${DGRAY}Invalid option!${RESET}"; sleep 1; menu_minecraft_java ;;
+        *) echo "Invalid option!"; sleep 1; menu_minecraft_java ;;
     esac
 }
 
 main_menu() {
     header
-    echo -e "${LIGHT_BLUE}=== Main Menu ===${RESET}"
-    echo -e "${YELLOW}1${LIGHT_BLUE})${CYAN} Minecraft Proxy"
-    echo -e "${YELLOW}2${LIGHT_BLUE})${CYAN} Minecraft Java Edition Server"
-    echo -e "${YELLOW}3${LIGHT_BLUE})${CYAN} More coming soon"
-    echo -e "${YELLOW}0${LIGHT_BLUE})${CYAN} Exit"
-    echo -en "${CYAN}Select an option: ${LIGHT_BLUE}"
+    echo "=== Main Menu ==="
+    echo "1) Minecraft Proxy"
+    echo "2) Minecraft Java Edition Server"
+    echo "3) More coming soon"
+    echo "0) Exit"
+    echo -n "Select an option: "
     read -r option
 
     case $option in
         1) menu_minecraft_proxy ;;
         2) menu_minecraft_java ;;
-        3) echo -e "${CYAN}More options will be added soon!${RESET}"; sleep 1; main_menu ;;
-        0) echo -e "${CYAN}Exiting...${RESET}"; exit 0 ;;
-        *) echo -e "${DGRAY}Invalid option!${RESET}"; sleep 1; main_menu ;;
+        3) echo "More options will be added soon!"; sleep 1; main_menu ;;
+        0) echo "Exiting..."; exit 0 ;;
+        *) echo "Invalid option!"; sleep 1; main_menu ;;
     esac
 }
 
-# Einstiegspunkt: Main Menu
-main_menu
+save_selection() {
+    # Speichert die Auswahl in einer Datei, damit beim nächsten Start kein Menü erscheint
+    # Parameter 1: Kategorie
+    # Parameter 2: Software
+    echo "$1:$2" > "$SELECTION_FILE"
+    echo "Selection saved: $1 - $2"
+}
+
+create_start_script() {
+    # Erstellt ein start.sh Skript, welches den Startbefehl des Pterodactyl-Containers nutzt
+    cat > start.sh <<EOF
+#!/bin/bash
+MODIFIED_STARTUP=\`eval echo \$(echo \${STARTUP} | sed -e 's/{{/\${/g' -e 's/}}/}/g')\`
+echo ":/home/container \$ \${MODIFIED_STARTUP}"
+\${MODIFIED_STARTUP}
+EOF
+    chmod +x start.sh
+    echo "start.sh created."
+}
+
+# Prüfen, ob schon eine Auswahl getroffen wurde
+if [ -f "$SELECTION_FILE" ]; then
+    # Datei existiert, also direkt start.sh ausführen (sofern server.jar und start.sh existieren)
+    if [ -f "server.jar" ] && [ -f "start.sh" ]; then
+        echo "Using previously selected server configuration..."
+        ./start.sh
+        exit 0
+    else
+        # Falls aus irgendeinem Grund server.jar oder start.sh fehlen, neu installieren
+        rm -f "$SELECTION_FILE"
+        main_menu
+    fi
+else
+    # Keine Auswahl -> Menü anzeigen
+    main_menu
+fi

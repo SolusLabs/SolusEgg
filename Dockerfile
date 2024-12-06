@@ -7,6 +7,9 @@ FROM eclipse-temurin:21-jdk AS java21
 # Finale Stage
 FROM debian:bullseye-slim
 
+LABEL version="latest"
+LABEL author="Janosch | Solus Labs" maintainer="info@janosch-bl.de"
+
 # Notwendige Pakete installieren
 RUN apt-get update && apt-get install -y wget curl jq bash ca-certificates && rm -rf /var/lib/apt/lists/*
 
