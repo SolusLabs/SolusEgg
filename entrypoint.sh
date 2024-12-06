@@ -1,192 +1,180 @@
 #!/bin/bash
 
-# Arbeitsverzeichnis festlegen
-cd /home/container
+# Farben definieren
+BLUE='\033[0;34m'
+LIGHT_BLUE='\033[1;34m'
+CYAN='\033[0;36m'
+WHITE='\033[1;37m'
+YELLOW='\033[1;33m'
+DGRAY='\033[0;37m'
+RESET='\033[0m'
 
-# Pfad zur Auswahldatei
-SELECTION_FILE="/home/container/.selected_minecraft"
+# Arbeitsverzeichnis setzen
+cd /home/container || exit 1
 
-# Funktion zur Abfrage von Eingaben
-get_input() {
-    local prompt="$1"
-    read -p "$prompt" input
-    echo $input
-}
-
-# Funktion zum Abrufen der verfügbaren Minecraft-Versionen
-list_mc_versions() {
-    local url="https://launchermeta.mojang.com/mc/game/version_manifest.json"
-    curl -s "$url" | jq -r '.versions[] | select(.type == "release") | .id'
-}
-
-# Funktion zum Abrufen von Server-Versionen anderer Software
-list_server_versions() {
-    local software=$1
-    case $software in
-        "Paper")
-            curl -s "https://papermc.io/api/v2/projects/paper" | jq -r '.versions[]'
-            ;;
-        "Purpur")
-            curl -s "https://api.purpurmc.org/v2/purpur" | jq -r '.versions[]'
-            ;;
-        "Forge")
-            curl -s "https://maven.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json" | jq -r '.promos | keys[] | select(contains("latest")) | split("-")[0]'
-            ;;
-        "Fabric")
-            curl -s "https://meta.fabricmc.net/v2/versions/game" | jq -r '.[].version'
-            ;;
-        *)
-            echo "Keine unterstützte Software für Versionen gefunden."
-            ;;
-    esac
-}
-
-# Funktion zum Herunterladen und Installieren der Software
-download_and_install() {
-    local category=$1
-    local software=$2
-    local version=$3
-    local mc_version=$4
-
-    echo "\nDownloading and installing $software $version for Minecraft $mc_version in category $category..."
-    
-    case $category in
-        "Bukkit" | "Plugins")
-            wget -O server.jar "https://papermc.io/api/v2/projects/$software/versions/$mc_version/builds/$version/downloads/$software-$version.jar"
-            ;;
-        "Vanilla")
-            wget -O server.jar "https://s3.amazonaws.com/Minecraft.Download/versions/$mc_version/minecraft_server.$mc_version.jar"
-            ;;
-        "Modded")
-            case $software in
-                "Forge")
-                    wget -O installer.jar "https://maven.minecraftforge.net/net/minecraftforge/forge/$mc_version-$version/forge-$mc_version-$version-installer.jar"
-                    java -jar installer.jar --installServer
-                    rm installer.jar
-                    ;;
-                "Fabric")
-                    wget -O installer.jar "https://maven.fabricmc.net/net/fabricmc/fabric-installer/$version/fabric-installer-$version.jar"
-                    java -jar installer.jar server -mcversion $mc_version
-                    rm installer.jar
-                    ;;
-            esac
-            ;;
-    esac
-
-    echo "Installation complete."
-}
-
-# Funktion zur Erstellung der Startdatei
-create_start_script() {
-    local category=$1
-    local software=$2
-    local version=$3
-
-    echo "#!/bin/bash" > start.sh
-    echo "java -Xms1G -Xmx2G -jar server.jar nogui" >> start.sh
-    chmod +x start.sh
-}
-
-# Wenn noch keine Auswahl getroffen wurde
-if [ ! -f "$SELECTION_FILE" ]; then
-    BLUE='\033[0;34m' 
+# Header-Funktion (beibehalten aus altem Code, aber Farbanpassungen möglich)
+header() {
     clear
     echo -e "
-    
-    ==========================================================================
-    
-    ${BLUE}░██████╗░█████╗░██╗░░░░░██╗░░░██╗░██████╗  ██╗░░░░░░█████╗░██████╗░░██████╗
-    ${BLUE}██╔════╝██╔══██╗██║░░░░░██║░░░██║██╔════╝  ██║░░░░░██╔══██╗██╔══██╗██╔════╝
-    ${BLUE}╚█████╗░██║░░██║██║░░░░░██║░░░██║╚█████╗░  ██║░░░░░███████║██████╦╝╚█████╗░
-    ${BLUE}░╚═══██╗██║░░██║██║░░░░░██║░░░██║░╚═══██╗  ██║░░░░░██╔══██║██╔══██╗░╚═══██╗
-    ${BLUE}██████╔╝╚█████╔╝███████╗╚██████╔╝██████╔╝  ███████╗██║░░██║██████╦╝██████╔╝
-    ${BLUE}╚═════╝░░╚════╝░╚══════╝░╚═════╝░╚═════╝░  ╚══════╝╚═╝░░╚═╝╚═════╝░╚═════╝░
-    
-    ==========================================================================
+${BLUE}==========================================================================
+${BLUE}░██████╗░█████╗░██╗░░░░░██╗░░░██╗░██████╗  ██╗░░░░░░█████╗░██████╗░░██████╗
+${BLUE}██╔════╝██╔══██╗██║░░░░░██║░░░██║██╔════╝  ██║░░░░░██╔══██╗██╔══██╗██╔════╝
+${BLUE}╚█████╗░██║░░██║██║░░░░░██║░░░██║╚█████╗░  ██║░░░░░███████║██████╦╝╚█████╗░
+${BLUE}░╚═══██╗██║░░██║██║░░░░░██║░░░██║░╚═══██╗  ██║░░░░░██╔══██║██╔══██╗░╚═══██╗
+${BLUE}██████╔╝╚█████╔╝███████╗╚██████╔╝██████╔╝  ███████╗██║░░██║██████╦╝██████╔╝
+${BLUE}╚═════╝░░╚════╝░╚══════╝░╚═════╝░╚═════╝░  ╚══════╝╚═╝░░╚═╝╚═════╝░╚═════╝░
+${BLUE}==========================================================================${RESET}
+"
+}
 
-    "
-    echo "Bitte wählen Sie eine Kategorie:"
-    echo "1) Bukkit (oder ähnliche Plugins)"
-    echo "2) Vanilla"
-    echo "3) Modded (Forge, Fabric, usw.)"
-    category_selection=$(get_input "Auswahl (1-3): ")
-
-    case $category_selection in
-        1)
-            category="Bukkit"
-            echo "Bitte wählen Sie eine Software (z.B. Paper, Purpur, Spigot):"
-            software=$(get_input "Software: ")
-            echo "Verfügbare Versionen für $software:"
-            server_versions=$(list_server_versions "$software")
-            echo "$server_versions"
-            ;;
-        2)
-            category="Vanilla"
-            software="Vanilla"
-            echo "Verfügbare Minecraft-Versionen:"
-            mc_versions=$(list_mc_versions)
-            echo "$mc_versions"
-            ;;
-        3)
-            category="Modded"
-            echo "Bitte wählen Sie eine Modding-Plattform (Forge, Fabric):"
-            software=$(get_input "Modding-Plattform: ")
-            echo "Verfügbare Versionen für $software:"
-            server_versions=$(list_server_versions "$software")
-            echo "$server_versions"
-            ;;
-        *)
-            echo "Ungültige Auswahl."
-            exit 1
-            ;;
-    esac
-
-    echo "Bitte wählen Sie die Minecraft-Version (Drücken Sie Enter für die neueste Version):"
-    mc_version=$(get_input "Minecraft-Version: ")
-    if [ -z "$mc_version" ]; then
-        mc_version=$(echo "$mc_versions" | head -n 1)
-    fi
-
-    echo "Bitte geben Sie die Software-Version an (Drücken Sie Enter für die neueste Version):"
-    version=$(get_input "Software-Version: ")
-    if [ -z "$version" ]; then
-        version=$(echo "$server_versions" | head -n 1)
-    fi
-
-    echo "Bitte wählen Sie die Java-Version (8, 11, 17, 21):"
-    java_version=$(get_input "Java-Version: ")
-    if [ -z "$java_version" ]; then
-        java_version="21"
-    fi
-
-    echo "Bitte akzeptieren Sie die EULA (ja/nein):"
-    eula=$(get_input "EULA akzeptieren (ja/nein): ")
-
-    if [ "$eula" != "ja" ]; then
-        echo "Sie müssen die EULA akzeptieren, um fortzufahren."
+# Download-Funktion für Dateien
+download_file() {
+    local url="$1"
+    local output="$2"
+    echo -e "${CYAN}Downloading: ${LIGHT_BLUE}${url}${RESET}"
+    curl -s -L -o "${output}" "${url}"
+    if [ $? -ne 0 ]; then
+        echo -e "${YELLOW}Download failed!${RESET}"
         exit 1
     fi
+    echo -e "${CYAN}Download complete: ${LIGHT_BLUE}${output}${RESET}"
+}
 
-    echo "eula=true" > eula.txt
+# Installationsfunktionen
+install_purpur() {
+    local PURPUR_VERSION=$(curl -s https://api.purpurmc.org/v2/purpur | jq -r '.versions[-1]')
+    echo -e "${CYAN}Installing Purpur ${LIGHT_BLUE}${PURPUR_VERSION}${RESET}"
+    download_file "https://api.purpurmc.org/v2/purpur/${PURPUR_VERSION}/latest/download" "server.jar"
+}
 
-    # Auswahl speichern
-    echo "$category:$software:$mc_version:$version:$java_version" > "$SELECTION_FILE"
+install_paper() {
+    local PAPER_VERSION=$(curl -s https://papermc.io/api/v2/projects/paper | jq -r '.versions[-1]')
+    local LATEST_BUILD=$(curl -s "https://papermc.io/api/v2/projects/paper/versions/${PAPER_VERSION}" | jq -r '.builds[-1]')
+    echo -e "${CYAN}Installing PaperMC ${LIGHT_BLUE}${PAPER_VERSION}-${LATEST_BUILD}${RESET}"
+    download_file "https://papermc.io/api/v2/projects/paper/versions/${PAPER_VERSION}/builds/${LATEST_BUILD}/downloads/paper-${PAPER_VERSION}-${LATEST_BUILD}.jar" "server.jar"
+}
 
-    # Herunterladen und Installieren
-    download_and_install "$category" "$software" "$version" "$mc_version"
+install_spigot() {
+    # Spigot-Download ist etwas komplizierter, da es keinen direkten DL-Link gibt.
+    # Hier könnte man ggf. Buildtools verwenden, aber für das Beispiel nur ein Platzhalter:
+    local VERSION="1.20.1" # Beispiel-Version
+    echo -e "${CYAN}Installing Spigot ${LIGHT_BLUE}${VERSION}${RESET}"
+    # Diese URL ist fiktiv. In der Realität müsstest du hier BuildTools nutzen.
+    # download_file "https://example.com/spigot-${VERSION}.jar" "server.jar"
+    echo -e "${YELLOW}Spigot installation routine is not defined. Please integrate BuildTools if needed.${RESET}"
+}
 
-    # Startdatei erstellen
-    create_start_script "$category" "$software" "$version"
+install_vanilla() {
+    local VERSION=$(curl -s https://launchermeta.mojang.com/mc/game/version_manifest.json | jq -r '.latest.release')
+    echo -e "${CYAN}Installing Vanilla Minecraft ${LIGHT_BLUE}${VERSION}${RESET}"
+    download_file "https://s3.amazonaws.com/Minecraft.Download/versions/${VERSION}/minecraft_server.${VERSION}.jar" "server.jar"
+}
 
-else
-    # Auswahl aus Datei lesen
-    IFS=":" read -r category software mc_version version java_version < "$SELECTION_FILE"
-    echo "Starte $software $version für Minecraft $mc_version aus Kategorie $category mit Java $java_version..."
-fi
+install_forge() {
+    local VERSION=$(curl -s https://maven.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json | jq -r '.promos["1.16.5-latest"]')
+    echo -e "${CYAN}Installing Forge ${LIGHT_BLUE}${VERSION}${RESET}"
+    download_file "https://maven.minecraftforge.net/net/minecraftforge/forge/${VERSION}/forge-${VERSION}-installer.jar" "forge-installer.jar"
+    java -jar forge-installer.jar --installServer
+    mv forge-*.jar server.jar
+    rm forge-installer.jar
+}
 
-# Java-Version setzen
-export JAVA_HOME="/opt/java$java_version"
-export PATH="$JAVA_HOME/bin:$PATH"
+install_fabric() {
+    # Fabric Installation ist hier nur exemplarisch.
+    # Eigentlich benötigt man den Fabric Installer:
+    local FABRIC_LOADER=$(curl -s https://meta.fabricmc.net/v2/versions/loader | jq -r '.[0].version')
+    echo -e "${CYAN}Installing Fabric Loader ${LIGHT_BLUE}${FABRIC_LOADER}${RESET}"
+    # Beispiel: Der Fabric Installer, je nach Version.
+    # Für eine echte Installation müsste man den Installer korrekt einsetzen:
+    # download_file "https://maven.fabricmc.net/net/fabricmc/fabric-installer/${FABRIC_LOADER}/fabric-installer-${FABRIC_LOADER}.jar" "fabric-installer.jar"
+    # java -jar fabric-installer.jar server -mcversion $SOME_MC_VERSION -downloadMinecraft
+    # rm fabric-installer.jar
+    echo -e "${YELLOW}Fabric installation routine is simplified. Please integrate full installer steps.${RESET}"
+}
 
-# Server starten
-./start.sh
+install_velocity() {
+    local VELOCITY_VERSION=$(curl -s https://api.papermc.io/v2/projects/velocity | jq -r '.versions[-1]')
+    local LATEST_BUILD=$(curl -s "https://api.papermc.io/v2/projects/velocity/versions/${VELOCITY_VERSION}" | jq -r '.builds[-1]')
+    echo -e "${CYAN}Installing Velocity ${LIGHT_BLUE}${VELOCITY_VERSION}-${LATEST_BUILD}${RESET}"
+    download_file "https://api.papermc.io/v2/projects/velocity/versions/${VELOCITY_VERSION}/builds/${LATEST_BUILD}/downloads/velocity-${VELOCITY_VERSION}-${LATEST_BUILD}.jar" "server.jar"
+}
+
+install_waterfall() {
+    local WATERFALL_VERSION=$(curl -s https://papermc.io/api/v2/projects/waterfall | jq -r '.versions[-1]')
+    local LATEST_BUILD=$(curl -s "https://papermc.io/api/v2/projects/waterfall/versions/${WATERFALL_VERSION}" | jq -r '.builds[-1]')
+    echo -e "${CYAN}Installing Waterfall ${LIGHT_BLUE}${WATERFALL_VERSION}-${LATEST_BUILD}${RESET}"
+    download_file "https://papermc.io/api/v2/projects/waterfall/versions/${WATERFALL_VERSION}/builds/${LATEST_BUILD}/downloads/waterfall-${WATERFALL_VERSION}-${LATEST_BUILD}.jar" "server.jar"
+}
+
+install_bungeecord() {
+    # Bungeecord braucht einen direkten Download vom Jenkins:
+    local BUNGEE_BUILD=$(curl -s https://ci.md-5.net/job/BungeeCord/lastSuccessfulBuild/buildNumber)
+    echo -e "${CYAN}Installing Bungeecord build ${LIGHT_BLUE}${BUNGEE_BUILD}${RESET}"
+    download_file "https://ci.md-5.net/job/BungeeCord/lastSuccessfulBuild/artifact/bootstrap/target/BungeeCord.jar" "server.jar"
+}
+
+menu_minecraft_proxy() {
+    header
+    echo -e "${LIGHT_BLUE}=== Minecraft Proxy Installation ===${RESET}"
+    echo -e "${YELLOW}1${LIGHT_BLUE})${CYAN} Install Velocity"
+    echo -e "${YELLOW}2${LIGHT_BLUE})${CYAN} Install Waterfall"
+    echo -e "${YELLOW}3${LIGHT_BLUE})${CYAN} Install Bungeecord"
+    echo -e "${YELLOW}0${LIGHT_BLUE})${CYAN} Back"
+    echo -en "${CYAN}Select an option: ${LIGHT_BLUE}"
+    read -r option
+
+    case $option in
+        1) install_velocity ;;
+        2) install_waterfall ;;
+        3) install_bungeecord ;;
+        0) main_menu ;;
+        *) echo -e "${DGRAY}Invalid option!${RESET}"; sleep 1; menu_minecraft_proxy ;;
+    esac
+}
+
+menu_minecraft_java() {
+    header
+    echo -e "${LIGHT_BLUE}=== Minecraft Java Edition Server Installation ===${RESET}"
+    echo -e "${YELLOW}1${LIGHT_BLUE})${CYAN} Install PaperMC"
+    echo -e "${YELLOW}2${LIGHT_BLUE})${CYAN} Install Purpur"
+    echo -e "${YELLOW}3${LIGHT_BLUE})${CYAN} Install Spigot"
+    echo -e "${YELLOW}4${LIGHT_BLUE})${CYAN} Install Vanilla"
+    echo -e "${YELLOW}5${LIGHT_BLUE})${CYAN} Install Forge"
+    echo -e "${YELLOW}6${LIGHT_BLUE})${CYAN} Install Fabric"
+    echo -e "${YELLOW}0${LIGHT_BLUE})${CYAN} Back"
+    echo -en "${CYAN}Select an option: ${LIGHT_BLUE}"
+    read -r option
+
+    case $option in
+        1) install_paper ;;
+        2) install_purpur ;;
+        3) install_spigot ;;
+        4) install_vanilla ;;
+        5) install_forge ;;
+        6) install_fabric ;;
+        0) main_menu ;;
+        *) echo -e "${DGRAY}Invalid option!${RESET}"; sleep 1; menu_minecraft_java ;;
+    esac
+}
+
+main_menu() {
+    header
+    echo -e "${LIGHT_BLUE}=== Main Menu ===${RESET}"
+    echo -e "${YELLOW}1${LIGHT_BLUE})${CYAN} Minecraft Proxy"
+    echo -e "${YELLOW}2${LIGHT_BLUE})${CYAN} Minecraft Java Edition Server"
+    echo -e "${YELLOW}3${LIGHT_BLUE})${CYAN} More coming soon"
+    echo -e "${YELLOW}0${LIGHT_BLUE})${CYAN} Exit"
+    echo -en "${CYAN}Select an option: ${LIGHT_BLUE}"
+    read -r option
+
+    case $option in
+        1) menu_minecraft_proxy ;;
+        2) menu_minecraft_java ;;
+        3) echo -e "${CYAN}More options will be added soon!${RESET}"; sleep 1; main_menu ;;
+        0) echo -e "${CYAN}Exiting...${RESET}"; exit 0 ;;
+        *) echo -e "${DGRAY}Invalid option!${RESET}"; sleep 1; main_menu ;;
+    esac
+}
+
+# Einstiegspunkt: Main Menu
+main_menu
