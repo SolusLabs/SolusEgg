@@ -37,47 +37,171 @@ download_file() {
     echo "Download complete: ${output}"
 }
 
-# Installationsfunktionen (Beispiele)
+############################################
+# Funktionen zur Auswahl von Minecraft-Versionen
+############################################
+
+# Fragt den Benutzer nach einer Minecraft-Version
+select_minecraft_version() {
+    echo "Please enter the desired Minecraft version (e.g. 1.20.1):"
+    read -r MC_VERSION
+    if [ -z "$MC_VERSION" ]; then
+        echo "No version entered, using latest release."
+        # Hole neueste Vanilla-Version als Fallback
+        MC_VERSION=$(curl -s https://launchermeta.mojang.com/mc/game/version_manifest.json | jq -r '.latest.release')
+    fi
+    echo "Selected Minecraft version: $MC_VERSION"
+}
+
+# Für Forge: Liste verfügbare Forge-Versionen für eine gegebene Minecraft-Version
+select_forge_version() {
+    local MC_VERSION="$1"
+    local FORGE_URL="https://files.minecraftforge.net/net/minecraftforge/forge/index_${MC_VERSION}.html"
+    local HTML=$(curl -s "$FORGE_URL")
+
+    if [[ "$HTML" == *"404 Not Found"* ]]; then
+        echo "No Forge versions found for Minecraft $MC_VERSION."
+        exit 1
+    fi
+
+    # Extrahiere Forge-Versionen
+    local VERSIONS=$(echo "$HTML" | grep -oP "forge-${MC_VERSION}-\K[0-9]+\.[0-9]+\.[0-9]+" | sort -V | uniq)
+
+    if [ -z "$VERSIONS" ]; then
+        echo "No Forge versions for $MC_VERSION found."
+        exit 1
+    fi
+
+    echo "Available Forge versions for Minecraft $MC_VERSION:"
+    echo "$VERSIONS"
+    echo -n "Please choose a Forge version: "
+    read -r FORGE_VERSION
+    echo "$FORGE_VERSION"
+}
+
+# Für Fabric: Hole verfügbares Loader-Listing für gegebene MC-Version
+select_fabric_version() {
+    local MC_VERSION="$1"
+    # Fabric API Endpoint für Loader-Versionen für eine spezifische MC-Version
+    local FABRIC_URL="https://meta.fabricmc.net/v2/versions/loader/${MC_VERSION}"
+    local JSON=$(curl -s "$FABRIC_URL")
+
+    # Prüfe, ob Ergebnisse vorhanden sind
+    local COUNT=$(echo "$JSON" | jq '. | length')
+    if [ "$COUNT" -eq 0 ]; then
+        echo "No Fabric loader versions found for Minecraft $MC_VERSION."
+        exit 1
+    fi
+
+    echo "Available Fabric loader versions for Minecraft $MC_VERSION:"
+    # Liste Loader-Versionen
+    echo "$JSON" | jq -r '.[].loader.version'
+    echo -n "Please choose a Fabric loader version: "
+    read -r FABRIC_VERSION
+    echo "$FABRIC_VERSION"
+}
+
+# Für NeoForge: Ähnlich wie Forge, wir nehmen an, dass es einen ähnlichen Endpoint gibt.
+# Wir nutzen Promotions-Slim ähnlich wie bei Forge, angenommen:
+# https://maven.neoforged.net/net/neoforged/neoforge/promotions_slim.json
+select_neoforge_version() {
+    local MC_VERSION="$1"
+    local NEOFORGE_URL="https://maven.neoforged.net/net/neoforged/neoforge/promotions_slim.json"
+    local JSON=$(curl -s "$NEOFORGE_URL")
+
+    # Hier gehen wir davon aus, dass .promos ähnlich wie bei Forge aufgebaut ist:
+    # "promos": {
+    #  "1.20.1-latest": "46.0.14",
+    #  ...
+    # }
+    # Extrahiere Versionskeys, die MC_VERSION enthalten
+    local PROMOS=$(echo "$JSON" | jq -r '.promos | keys[]' | grep "$MC_VERSION")
+
+    if [ -z "$PROMOS" ]; then
+        echo "No NeoForge versions found for Minecraft $MC_VERSION."
+        exit 1
+    fi
+
+    echo "Available NeoForge versions for Minecraft $MC_VERSION:"
+    # Extrahiere nur den Zahlenanteil nach MC_VERSION-
+    echo "$PROMOS" | sed "s/${MC_VERSION}-//g"
+    echo -n "Please choose a NeoForge version: "
+    read -r NEOFORGE_VERSION
+    echo "$NEOFORGE_VERSION"
+}
+
+############################################
+# Installationsfunktionen
+############################################
+
 install_paper() {
-    local PAPER_VERSION=$(curl -s https://papermc.io/api/v2/projects/paper | jq -r '.versions[-1]')
+    local MC_VERSION="$1"
+    local PAPER_VERSION=$(curl -s https://papermc.io/api/v2/projects/paper | jq -r '.versions[]' | grep "$MC_VERSION" | tail -n1)
+    if [ -z "$PAPER_VERSION" ]; then
+        echo "No matching Paper version for $MC_VERSION found. Using latest."
+        PAPER_VERSION=$(curl -s https://papermc.io/api/v2/projects/paper | jq -r '.versions[-1]')
+    fi
     local LATEST_BUILD=$(curl -s "https://papermc.io/api/v2/projects/paper/versions/${PAPER_VERSION}" | jq -r '.builds[-1]')
     echo "Installing PaperMC ${PAPER_VERSION}-${LATEST_BUILD}"
     download_file "https://papermc.io/api/v2/projects/paper/versions/${PAPER_VERSION}/builds/${LATEST_BUILD}/downloads/paper-${PAPER_VERSION}-${LATEST_BUILD}.jar" "server.jar"
 }
 
 install_purpur() {
-    local PURPUR_VERSION=$(curl -s https://api.purpurmc.org/v2/purpur | jq -r '.versions[-1]')
+    local MC_VERSION="$1"
+    local PURPUR_VERSION=$(curl -s https://api.purpurmc.org/v2/purpur | jq -r '.versions[]' | grep "$MC_VERSION" | tail -n1)
+    if [ -z "$PURPUR_VERSION" ]; then
+        echo "No matching Purpur version for $MC_VERSION found. Using latest."
+        PURPUR_VERSION=$(curl -s https://api.purpurmc.org/v2/purpur | jq -r '.versions[-1]')
+    fi
     echo "Installing Purpur ${PURPUR_VERSION}"
     download_file "https://api.purpurmc.org/v2/purpur/${PURPUR_VERSION}/latest/download" "server.jar"
 }
 
 install_spigot() {
-    # Hier müsste eigentlich BuildTools eingesetzt werden, dies ist nur ein Platzhalter.
-    echo "Installing Spigot placeholder"
-    # download_file "irgendein_spigot_link" "server.jar"
-    echo "Spigot installation needs manual integration of BuildTools."
+    local MC_VERSION="$1"
+    echo "Installing Spigot placeholder for $MC_VERSION"
+    echo "Please integrate Spigot BuildTools if needed."
+    # Kein echter Download hier, da Spigot kein direktes Download-API hat.
 }
 
 install_vanilla() {
-    local VERSION=$(curl -s https://launchermeta.mojang.com/mc/game/version_manifest.json | jq -r '.latest.release')
-    echo "Installing Vanilla Minecraft ${VERSION}"
-    download_file "https://s3.amazonaws.com/Minecraft.Download/versions/${VERSION}/minecraft_server.${VERSION}.jar" "server.jar"
+    local MC_VERSION="$1"
+    echo "Installing Vanilla Minecraft ${MC_VERSION}"
+    download_file "https://s3.amazonaws.com/Minecraft.Download/versions/${MC_VERSION}/minecraft_server.${MC_VERSION}.jar" "server.jar"
 }
 
 install_forge() {
-    local VERSION=$(curl -s https://maven.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json | jq -r '.promos["1.16.5-latest"]')
-    echo "Installing Forge ${VERSION}"
-    download_file "https://maven.minecraftforge.net/net/minecraftforge/forge/${VERSION}/forge-${VERSION}-installer.jar" "forge-installer.jar"
+    local MC_VERSION="$1"
+    local FORGE_VERSION="$2"
+    echo "Installing Forge ${MC_VERSION}-${FORGE_VERSION}"
+    local DOWNLOAD_URL="https://maven.minecraftforge.net/net/minecraftforge/forge/${MC_VERSION}-${FORGE_VERSION}/forge-${MC_VERSION}-${FORGE_VERSION}-installer.jar"
+    download_file "${DOWNLOAD_URL}" "forge-installer.jar"
     java -jar forge-installer.jar --installServer
     mv forge-*.jar server.jar
     rm forge-installer.jar
 }
 
 install_fabric() {
-    echo "Fabric installation needs full integration. Placeholder."
+    local MC_VERSION="$1"
+    local FABRIC_VERSION="$2"
+    echo "Fabric installation placeholder. Integrate actual fabric installer logic soon."
+}
+
+install_neoforge() {
+    local MC_VERSION="$1"
+    local NEOFORGE_VERSION="$2"
+    echo "Installing NeoForge ${MC_VERSION}-${NEOFORGE_VERSION}"
+    # Analog zu Forge:
+    local DOWNLOAD_URL="https://maven.neoforged.net/net/neoforged/neoforge/${MC_VERSION}-${NEOFORGE_VERSION}/neoforge-${MC_VERSION}-${NEOFORGE_VERSION}-installer.jar"
+    download_file "${DOWNLOAD_URL}" "neoforge-installer.jar"
+    java -jar neoforge-installer.jar --installServer
+    mv neoforge-*.jar server.jar
+    rm neoforge-installer.jar
 }
 
 install_velocity() {
+    local MC_VERSION="$1"
+    # Velocity MC-Version ist eigentlich nicht zwingend relevant, da Proxy.
     local VELOCITY_VERSION=$(curl -s https://api.papermc.io/v2/projects/velocity | jq -r '.versions[-1]')
     local LATEST_BUILD=$(curl -s "https://api.papermc.io/v2/projects/velocity/versions/${VELOCITY_VERSION}" | jq -r '.builds[-1]')
     echo "Installing Velocity ${VELOCITY_VERSION}-${LATEST_BUILD}"
@@ -85,6 +209,7 @@ install_velocity() {
 }
 
 install_waterfall() {
+    local MC_VERSION="$1"
     local WATERFALL_VERSION=$(curl -s https://papermc.io/api/v2/projects/waterfall | jq -r '.versions[-1]')
     local LATEST_BUILD=$(curl -s "https://papermc.io/api/v2/projects/waterfall/versions/${WATERFALL_VERSION}" | jq -r '.builds[-1]')
     echo "Installing Waterfall ${WATERFALL_VERSION}-${LATEST_BUILD}"
@@ -92,12 +217,35 @@ install_waterfall() {
 }
 
 install_bungeecord() {
+    local MC_VERSION="$1"
     local BUNGEE_BUILD=$(curl -s https://ci.md-5.net/job/BungeeCord/lastSuccessfulBuild/buildNumber)
     echo "Installing Bungeecord build ${BUNGEE_BUILD}"
     download_file "https://ci.md-5.net/job/BungeeCord/lastSuccessfulBuild/artifact/bootstrap/target/BungeeCord.jar" "server.jar"
 }
 
-# Menüfunktionen
+
+############################################
+# Hilfsfunktionen Menü
+############################################
+
+save_selection() {
+    # Parameter: category, software, mc_version, subversion
+    # z.B. "Java:Forge:1.20.1:46.0.14"
+    echo "$1:$2:$3:$4" > "$SELECTION_FILE"
+    echo "Selection saved: $1 - $2 - $3 - $4"
+}
+
+create_start_script() {
+    cat > start.sh <<EOF
+#!/bin/bash
+MODIFIED_STARTUP=\`eval echo \$(echo \${STARTUP} | sed -e 's/{{/\${/g' -e 's/}}/}/g')\`
+echo ":/home/container \$ \${MODIFIED_STARTUP}"
+\${MODIFIED_STARTUP}
+EOF
+    chmod +x start.sh
+    echo "start.sh created."
+}
+
 menu_minecraft_proxy() {
     header
     echo "=== Minecraft Proxy Installation ==="
@@ -108,10 +256,12 @@ menu_minecraft_proxy() {
     echo -n "Select an option: "
     read -r option
 
+    select_minecraft_version
+
     case $option in
-        1) install_velocity; save_selection "Proxy" "Velocity"; create_start_script; exit 0 ;;
-        2) install_waterfall; save_selection "Proxy" "Waterfall"; create_start_script; exit 0 ;;
-        3) install_bungeecord; save_selection "Proxy" "Bungeecord"; create_start_script; exit 0 ;;
+        1) install_velocity "$MC_VERSION"; save_selection "Proxy" "Velocity" "$MC_VERSION" ""; create_start_script; exit 0 ;;
+        2) install_waterfall "$MC_VERSION"; save_selection "Proxy" "Waterfall" "$MC_VERSION" ""; create_start_script; exit 0 ;;
+        3) install_bungeecord "$MC_VERSION"; save_selection "Proxy" "Bungeecord" "$MC_VERSION" ""; create_start_script; exit 0 ;;
         0) main_menu ;;
         *) echo "Invalid option!"; sleep 1; menu_minecraft_proxy ;;
     esac
@@ -126,17 +276,39 @@ menu_minecraft_java() {
     echo "4) Install Vanilla"
     echo "5) Install Forge"
     echo "6) Install Fabric"
+    echo "7) Install NeoForge"
     echo "0) Back"
     echo -n "Select an option: "
     read -r option
 
+    select_minecraft_version
+
     case $option in
-        1) install_paper; save_selection "Java" "PaperMC"; create_start_script; exit 0 ;;
-        2) install_purpur; save_selection "Java" "Purpur"; create_start_script; exit 0 ;;
-        3) install_spigot; save_selection "Java" "Spigot"; create_start_script; exit 0 ;;
-        4) install_vanilla; save_selection "Java" "Vanilla"; create_start_script; exit 0 ;;
-        5) install_forge; save_selection "Java" "Forge"; create_start_script; exit 0 ;;
-        6) install_fabric; save_selection "Java" "Fabric"; create_start_script; exit 0 ;;
+        1) install_paper "$MC_VERSION"; save_selection "Java" "PaperMC" "$MC_VERSION" ""; create_start_script; exit 0 ;;
+        2) install_purpur "$MC_VERSION"; save_selection "Java" "Purpur" "$MC_VERSION" ""; create_start_script; exit 0 ;;
+        3) install_spigot "$MC_VERSION"; save_selection "Java" "Spigot" "$MC_VERSION" ""; create_start_script; exit 0 ;;
+        4) install_vanilla "$MC_VERSION"; save_selection "Java" "Vanilla" "$MC_VERSION" ""; create_start_script; exit 0 ;;
+        5) # Forge: erst Subversion wählen
+           FORGE_VERSION=$(select_forge_version "$MC_VERSION")
+           install_forge "$MC_VERSION" "$FORGE_VERSION"
+           save_selection "Java" "Forge" "$MC_VERSION" "$FORGE_VERSION"
+           create_start_script
+           exit 0
+           ;;
+        6) # Fabric: erst Subversion wählen
+           FABRIC_VERSION=$(select_fabric_version "$MC_VERSION")
+           install_fabric "$MC_VERSION" "$FABRIC_VERSION"
+           save_selection "Java" "Fabric" "$MC_VERSION" "$FABRIC_VERSION"
+           create_start_script
+           exit 0
+           ;;
+        7) # NeoForge: Subversion wählen
+           NEOFORGE_VERSION=$(select_neoforge_version "$MC_VERSION")
+           install_neoforge "$MC_VERSION" "$NEOFORGE_VERSION"
+           save_selection "Java" "NeoForge" "$MC_VERSION" "$NEOFORGE_VERSION"
+           create_start_script
+           exit 0
+           ;;
         0) main_menu ;;
         *) echo "Invalid option!"; sleep 1; menu_minecraft_java ;;
     esac
@@ -161,35 +333,15 @@ main_menu() {
     esac
 }
 
-save_selection() {
-    # Speichert die Auswahl in einer Datei, damit beim nächsten Start kein Menü erscheint
-    # Parameter 1: Kategorie
-    # Parameter 2: Software
-    echo "$1:$2" > "$SELECTION_FILE"
-    echo "Selection saved: $1 - $2"
-}
-
-create_start_script() {
-    # Erstellt ein start.sh Skript, welches den Startbefehl des Pterodactyl-Containers nutzt
-    cat > start.sh <<EOF
-#!/bin/bash
-MODIFIED_STARTUP=\`eval echo \$(echo \${STARTUP} | sed -e 's/{{/\${/g' -e 's/}}/}/g')\`
-echo ":/home/container \$ \${MODIFIED_STARTUP}"
-\${MODIFIED_STARTUP}
-EOF
-    chmod +x start.sh
-    echo "start.sh created."
-}
-
 # Prüfen, ob schon eine Auswahl getroffen wurde
 if [ -f "$SELECTION_FILE" ]; then
-    # Datei existiert, also direkt start.sh ausführen (sofern server.jar und start.sh existieren)
-    if [ -f "server.jar" ] && [ -f "start.sh" ]; then
+    # Datei existiert, also direkt start.sh ausführen (sofern start.sh existieren)
+    if [ -f "start.sh" ]; then
         echo "Using previously selected server configuration..."
         ./start.sh
         exit 0
     else
-        # Falls aus irgendeinem Grund server.jar oder start.sh fehlen, neu installieren
+        # Falls aus irgendeinem Grund start.sh fehlt, neu installieren
         rm -f "$SELECTION_FILE"
         main_menu
     fi
