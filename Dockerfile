@@ -5,7 +5,7 @@ FROM debian:bullseye-slim
 LABEL version="latest"
 LABEL author="Janosch | Solus Labs" maintainer="info@janosch-bl.de"
 
-RUN apt-get update && apt-get install -y wget curl jq bash ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y wget curl jq bash git ca-certificates && rm -rf /var/lib/apt/lists/*
 
 ENV JAVA21_HOME=/opt/java21
 
