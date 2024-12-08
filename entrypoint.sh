@@ -325,7 +325,7 @@ main_menu() {
 }
 
 if [ -f "$SELECTION_FILE" ]; then
-    if[ -f "start.sh" ]; then
+    if [ -f "start.sh" ]; then
         echo "Using previously selected server configuration..."
         ./start.sh
         exit 0
