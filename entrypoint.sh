@@ -97,7 +97,6 @@ filter_vanilla_prerelease() {
     grep -E 'pre|rc'
 }
 
-# Neue download_from_mcjars Funktion mit dem neuen Endpunkt
 download_from_mcjars() {
     local TYPE="$1"
     local MC_VERSION="$2"
@@ -170,7 +169,6 @@ install_neoforge() {
     rm neoforge-installer.jar
 }
 
-
 menu_plugins() {
     header
     echo "=== Plugins (Bukkit-like) ==="
@@ -179,8 +177,7 @@ menu_plugins() {
     echo "3) Spigot"
     echo "4) Folia"
     echo "5) Purpur"
-    echo "6) Quilt"
-    echo "7) Canvas"
+    echo "8) Leaves"
     echo "0) Back"
     echo "Select an option: "
     read -r option
@@ -191,8 +188,7 @@ menu_plugins() {
         3) TYPE="SPIGOT" ;;
         4) TYPE="FOLIA" ;;
         5) TYPE="PURPUR" ;;
-        6) TYPE="QUILT" ;;
-        7) TYPE="CANVAS" ;;
+        8) TYPE="LEAVES" ;;
         0) menu_main; return ;;
         *) echo "Invalid option!"; sleep 1; menu_plugins; return ;;
     esac
@@ -215,51 +211,36 @@ menu_vanilla() {
     echo "1) Full versions"
     echo "2) Snapshots"
     echo "3) Pre-Releases"
-    echo "4) Leaves"
     echo "0) Back"
     echo "Select an option: "
     read -r option
 
-    if [ $option -eq 4 ]; then
-        TYPE="LEAVES"
-        ALL_VERSIONS=$(get_all_versions "$TYPE")
-        echo "Available versions for LEAVES:"
-        print_in_columns "$(echo "$ALL_VERSIONS")"
-        echo "Please enter a Minecraft version:"
-        read -r MC_VERSION
-        eula_check
-        download_from_mcjars "$TYPE" "$MC_VERSION"
-        save_selection "Vanilla" "Leaves" "$MC_VERSION" ""
-        create_start_script
-        exit 0
-    else
-        TYPE="VANILLA"
-        ALL_VERSIONS=$(get_all_versions "$TYPE")
-        case $option in
-            1) FILTERED=$(echo "$ALL_VERSIONS" | filter_vanilla_full) ; CATEGORY="Vanilla-Full" ;;
-            2) FILTERED=$(echo "$ALL_VERSIONS" | filter_vanilla_snapshot) ; CATEGORY="Vanilla-Snapshot" ;;
-            3) FILTERED=$(echo "$ALL_VERSIONS" | filter_vanilla_prerelease) ; CATEGORY="Vanilla-PreRelease" ;;
-            0) menu_main; return ;;
-            *) echo "Invalid option!"; sleep 1; menu_vanilla; return ;;
-        esac
+    TYPE="VANILLA"
+    ALL_VERSIONS=$(get_all_versions "$TYPE")
+    case $option in
+        1) FILTERED=$(echo "$ALL_VERSIONS" | filter_vanilla_full) ; CATEGORY="Vanilla-Full" ;;
+        2) FILTERED=$(echo "$ALL_VERSIONS" | filter_vanilla_snapshot) ; CATEGORY="Vanilla-Snapshot" ;;
+        3) FILTERED=$(echo "$ALL_VERSIONS" | filter_vanilla_prerelease) ; CATEGORY="Vanilla-PreRelease" ;;
+        0) menu_main; return ;;
+        *) echo "Invalid option!"; sleep 1; menu_vanilla; return ;;
+    esac
 
-        if [ -z "$FILTERED" ]; then
-            echo "No matching versions found."
-            sleep 1
-            menu_vanilla
-            return
-        fi
-
-        echo "Available versions:"
-        print_in_columns "$(echo "$FILTERED")"
-        echo "Please enter a Minecraft version from the above list:"
-        read -r MC_VERSION
-        eula_check
-        download_from_mcjars "$TYPE" "$MC_VERSION"
-        save_selection "Vanilla" "$CATEGORY" "$MC_VERSION" ""
-        create_start_script
-        exit 0
+    if [ -z "$FILTERED" ]; then
+        echo "No matching versions found."
+        sleep 1
+        menu_vanilla
+        return
     fi
+
+    echo "Available versions:"
+    print_in_columns "$(echo "$FILTERED")"
+    echo "Please enter a Minecraft version from the above list:"
+    read -r MC_VERSION
+    eula_check
+    download_from_mcjars "$TYPE" "$MC_VERSION"
+    save_selection "Vanilla" "$CATEGORY" "$MC_VERSION" ""
+    create_start_script
+    exit 0
 }
 
 menu_modded() {
@@ -268,7 +249,7 @@ menu_modded() {
     echo "1) Forge"
     echo "2) NeoForge"
     echo "3) Fabric"
-    echo "4) Mohist"
+    echo "4) Quilt"
     echo "5) Sponge"
     echo "0) Back"
     echo "Select an option: "
@@ -311,7 +292,7 @@ menu_modded() {
             exit 0
             ;;
         4)
-            TYPE="MOHIST"
+            TYPE="QUILT"
             ALL_VERSIONS=$(get_all_versions "$TYPE")
             echo "Available Minecraft versions for $TYPE:"
             print_in_columns "$(echo "$ALL_VERSIONS")"
@@ -319,7 +300,7 @@ menu_modded() {
             read -r MC_VERSION
             eula_check
             download_from_mcjars "$TYPE" "$MC_VERSION"
-            save_selection "Modded" "Mohist" "$MC_VERSION" ""
+            save_selection "Modded" "Quilt" "$MC_VERSION" ""
             create_start_script
             exit 0
             ;;
@@ -341,12 +322,43 @@ menu_modded() {
     esac
 }
 
+menu_proxy() {
+    header
+    echo "=== Proxy Options ==="
+    echo "1) Velocity"
+    echo "2) Waterfall"
+    echo "3) Bungeecord"
+    echo "0) Back"
+    echo "Select an option: "
+    read -r option
+
+    case $option in
+        1) TYPE="VELOCITY" ;;
+        2) TYPE="WATERFALL" ;;
+        3) TYPE="BUNGEECORD" ;;
+        0) menu_main; return ;;
+        *) echo "Invalid option!"; sleep 1; menu_proxy; return ;;
+    esac
+
+    ALL_VERSIONS=$(get_all_versions "$TYPE")
+    echo "Available Minecraft versions for $TYPE:"
+    print_in_columns "$(echo "$ALL_VERSIONS")"
+    echo "Please enter a Minecraft version:"
+    read -r MC_VERSION
+    eula_check
+    download_from_mcjars "$TYPE" "$MC_VERSION"
+    save_selection "Proxy" "$TYPE" "$MC_VERSION" ""
+    create_start_script
+    exit 0
+}
+
 menu_main() {
     header
     echo "=== Main Menu ==="
     echo "1) Plugins (Paper, Purpur, Spigot, etc.)"
-    echo "2) Vanilla (Full, Snapshots, Pre-Releases, Leaves)"
-    echo "3) Modded (Forge, NeoForge, Fabric, Mohist, Sponge)"
+    echo "2) Vanilla (Full, Snapshots, Pre-Releases)"
+    echo "3) Modded (Forge, NeoForge, Fabric, Quilt, Sponge)"
+    echo "4) Proxy (Velocity, Waterfall, Bungeecord)"
     echo "0) Exit"
     echo "Select an option: "
     read -r option
@@ -354,6 +366,7 @@ menu_main() {
         1) menu_plugins ;;
         2) menu_vanilla ;;
         3) menu_modded ;;
+        4) menu_proxy ;;
         0) echo "Exiting..."; exit 0 ;;
         *) echo "Invalid option!"; sleep 1; menu_main ;;
     esac
