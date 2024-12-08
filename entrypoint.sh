@@ -108,6 +108,23 @@ print_neoforge_versions_new() {
     echo ""
 }
 
+install_buildtools() {
+    BUILD_DIR="/home/container/.breaker/buildtools"
+    mkdir -p "$BUILD_DIR"
+    curl -s -L "https://hub.spigotmc.org/jenkins/job/BuildTools/lastSuccessfulBuild/artifact/target/BuildTools.jar" -o "$BUILD_DIR/BuildTools.jar"
+}
+
+compile_spigot() {
+    MC_VERSION="$1"
+    install_buildtools
+    BUILD_DIR="/home/container/.breaker/buildtools"
+    cd "$BUILD_DIR" || exit 1
+    java -Xms256M -jar BuildTools.jar --rev "${MC_VERSION}" --compile SPIGOT
+    mv Spigot/Spigot-Server/target/spigot-*.jar /home/container/server.jar
+    find . ! -name 'BuildTools.jar' -exec rm -rf {} + > /dev/null 2>&1
+    cd /home/container || exit 1
+}
+
 eula_check() {
     echo "Do you accept the EULA? (yes/no)"
     read -r EULA_ANSWER
@@ -141,7 +158,8 @@ install_purpur() {
 
 install_spigot() {
     MC_VERSION="$1"
-    echo "Installing Spigot placeholder for $MC_VERSION"
+    echo "Installing Spigot for ${MC_VERSION}"
+    compile_spigot "$MC_VERSION"
 }
 
 install_vanilla() {
@@ -180,7 +198,6 @@ install_neoforge() {
 }
 
 install_velocity() {
-    MC_VERSION="$1"
     VELOCITY_VERSION=$(curl -s https://api.papermc.io/v2/projects/velocity | jq -r '.versions[-1]')
     LATEST_BUILD=$(curl -s "https://api.papermc.io/v2/projects/velocity/versions/${VELOCITY_VERSION}" | jq -r '.builds[-1]')
     echo "Installing Velocity ${VELOCITY_VERSION}-${LATEST_BUILD}"
@@ -188,7 +205,6 @@ install_velocity() {
 }
 
 install_waterfall() {
-    MC_VERSION="$1"
     WATERFALL_VERSION=$(curl -s https://papermc.io/api/v2/projects/waterfall | jq -r '.versions[-1]')
     LATEST_BUILD=$(curl -s "https://papermc.io/api/v2/projects/waterfall/versions/${WATERFALL_VERSION}" | jq -r '.builds[-1]')
     echo "Installing Waterfall ${WATERFALL_VERSION}-${LATEST_BUILD}"
@@ -196,7 +212,6 @@ install_waterfall() {
 }
 
 install_bungeecord() {
-    MC_VERSION="$1"
     BUNGEE_BUILD=$(curl -s https://ci.md-5.net/job/BungeeCord/lastSuccessfulBuild/buildNumber)
     echo "Installing Bungeecord build ${BUNGEE_BUILD}"
     download_file "https://ci.md-5.net/job/BungeeCord/lastSuccessfulBuild/artifact/bootstrap/target/BungeeCord.jar" "server.jar"
@@ -225,13 +240,12 @@ menu_minecraft_proxy() {
     echo "2) Install Waterfall"
     echo "3) Install Bungeecord"
     echo "0) Back"
-    echo -n "Select an option: "
+    echo "Select an option (e.g. 3): "
     read -r option
-    select_minecraft_version
     case $option in
-        1) eula_check; install_velocity "$MC_VERSION"; save_selection "Proxy" "Velocity" "$MC_VERSION" ""; create_start_script; exit 0 ;;
-        2) eula_check; install_waterfall "$MC_VERSION"; save_selection "Proxy" "Waterfall" "$MC_VERSION" ""; create_start_script; exit 0 ;;
-        3) eula_check; install_bungeecord "$MC_VERSION"; save_selection "Proxy" "Bungeecord" "$MC_VERSION" ""; create_start_script; exit 0 ;;
+        1) eula_check; install_velocity; save_selection "Proxy" "Velocity" "latest" ""; create_start_script; exit 0 ;;
+        2) eula_check; install_waterfall; save_selection "Proxy" "Waterfall" "latest" ""; create_start_script; exit 0 ;;
+        3) eula_check; install_bungeecord; save_selection "Proxy" "Bungeecord" "latest" ""; create_start_script; exit 0 ;;
         0) main_menu ;;
         *) echo "Invalid option!"; sleep 1; menu_minecraft_proxy ;;
     esac
@@ -248,7 +262,7 @@ menu_minecraft_java() {
     echo "6) Install Fabric"
     echo "7) Install NeoForge"
     echo "0) Back"
-    echo -n "Select an option: "
+    echo "Select an option (e.g. 7): "
     read -r option
     select_minecraft_version
     case $option in
