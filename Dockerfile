@@ -11,6 +11,8 @@ ENV JAVA21_HOME=/opt/java21
 
 RUN mkdir -p $JAVA21_HOME
 
+COPY --from=java21 /opt/java/openjdk $JAVA21_HOME
+
 ENV JAVA_HOME=$JAVA21_HOME
 ENV PATH=$JAVA_HOME/bin:$PATH
 
