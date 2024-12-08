@@ -7,6 +7,7 @@ RESET='\033[0m'
 cd /home/container || exit 1
 
 SELECTION_FILE="/home/container/.selected_minecraft"
+
 # Header anzeigen
 header() {
     clear
@@ -40,7 +41,6 @@ download_file() {
 # Funktionen zur Auswahl von Minecraft-Versionen
 ############################################
 
-# Fragt den Benutzer nach einer Minecraft-Version
 select_minecraft_version() {
     echo "Please enter the desired Minecraft version (e.g. 1.20.1):"
     read -r MC_VERSION
@@ -51,7 +51,6 @@ select_minecraft_version() {
     echo "Selected Minecraft version: $MC_VERSION"
 }
 
-# Für Forge: Liste verfügbare Forge-Versionen für eine gegebene Minecraft-Version
 select_forge_version() {
     local MC_VERSION="$1"
     local FORGE_URL="https://files.minecraftforge.net/net/minecraftforge/forge/index_${MC_VERSION}.html"
@@ -70,18 +69,24 @@ select_forge_version() {
         exit 1
     fi
 
+    # Zeige alle Forge-Versionen an, bevor nach der Eingabe gefragt wird
     echo ""
     echo "Available Forge versions for Minecraft $MC_VERSION:"
     echo "$VERSIONS"
     echo ""
-    echo -n "Please choose a Forge version: "
-    # Hier ganz normal einlesen
-    read -r FORGE_VERSION
-    # FORGE_VERSION zurückgeben
+
+    # Prompt für Forge-Version
+    read -r -p "Please choose a Forge version: " FORGE_VERSION
+
+    # Prüfe, ob die gewählte Version in der Liste ist
+    if ! echo "$VERSIONS" | grep -q "^${FORGE_VERSION}\$"; then
+        echo "Invalid Forge version selected!"
+        exit 1
+    fi
+
     echo "$FORGE_VERSION"
 }
 
-# Fabric Versionen wählen
 select_fabric_version() {
     local MC_VERSION="$1"
     local FABRIC_URL="https://meta.fabricmc.net/v2/versions/loader/${MC_VERSION}"
@@ -97,12 +102,18 @@ select_fabric_version() {
     echo "Available Fabric loader versions for Minecraft $MC_VERSION:"
     echo "$JSON" | jq -r '.[].loader.version'
     echo ""
-    echo -n "Please choose a Fabric loader version: "
-    read -r FABRIC_VERSION
+
+    read -r -p "Please choose a Fabric loader version: " FABRIC_VERSION
+
+    # Prüfe, ob die gewählte Version in der Liste ist
+    if ! echo "$JSON" | jq -r '.[].loader.version' | grep -q "^${FABRIC_VERSION}\$"; then
+        echo "Invalid Fabric version selected!"
+        exit 1
+    fi
+
     echo "$FABRIC_VERSION"
 }
 
-# NeoForge Versionen wählen
 select_neoforge_version() {
     local MC_VERSION="$1"
     local NEOFORGE_URL="https://maven.neoforged.net/net/neoforged/neoforge/promotions_slim.json"
@@ -117,10 +128,18 @@ select_neoforge_version() {
 
     echo ""
     echo "Available NeoForge versions for Minecraft $MC_VERSION:"
-    echo "$PROMOS" | sed "s/${MC_VERSION}-//g"
+    # Entferne das MC_VERSION- Präfix
+    local NEO_VERSIONS=$(echo "$PROMOS" | sed "s/${MC_VERSION}-//g")
+    echo "$NEO_VERSIONS"
     echo ""
-    echo -n "Please choose a NeoForge version: "
-    read -r NEOFORGE_VERSION
+
+    read -r -p "Please choose a NeoForge version: " NEOFORGE_VERSION
+
+    if ! echo "$NEO_VERSIONS" | grep -q "^${NEOFORGE_VERSION}\$"; then
+        echo "Invalid NeoForge version selected!"
+        exit 1
+    fi
+
     echo "$NEOFORGE_VERSION"
 }
 
@@ -178,7 +197,7 @@ install_fabric() {
     echo "Installing Fabric Loader ${FABRIC_VERSION} for Minecraft ${MC_VERSION}"
     local FABRIC_PROFILE_URL="https://meta.fabricmc.net/v2/versions/loader/${MC_VERSION}/${FABRIC_VERSION}/profile/json"
     download_file "${FABRIC_PROFILE_URL}" "fabric-installer.json"
-    # Placeholder für tatsächliche Fabric-Installation
+    # Placeholder für Fabric Installation
     echo "Fabric installation placeholder. Integrate actual fabric installer logic."
 }
 
@@ -279,21 +298,21 @@ menu_minecraft_java() {
         2) install_purpur "$MC_VERSION"; save_selection "Java" "Purpur" "$MC_VERSION" ""; create_start_script; exit 0 ;;
         3) install_spigot "$MC_VERSION"; save_selection "Java" "Spigot" "$MC_VERSION" ""; create_start_script; exit 0 ;;
         4) install_vanilla "$MC_VERSION"; save_selection "Java" "Vanilla" "$MC_VERSION" ""; create_start_script; exit 0 ;;
-        5) # Forge: erst Subversion wählen
+        5) # Forge
            FORGE_VERSION=$(select_forge_version "$MC_VERSION")
            install_forge "$MC_VERSION" "$FORGE_VERSION"
            save_selection "Java" "Forge" "$MC_VERSION" "$FORGE_VERSION"
            create_start_script
            exit 0
            ;;
-        6) # Fabric: Subversion wählen
+        6) # Fabric
            FABRIC_VERSION=$(select_fabric_version "$MC_VERSION")
            install_fabric "$MC_VERSION" "$FABRIC_VERSION"
            save_selection "Java" "Fabric" "$MC_VERSION" "$FABRIC_VERSION"
            create_start_script
            exit 0
            ;;
-        7) # NeoForge: Subversion wählen
+        7) # NeoForge
            NEOFORGE_VERSION=$(select_neoforge_version "$MC_VERSION")
            install_neoforge "$MC_VERSION" "$NEOFORGE_VERSION"
            save_selection "Java" "NeoForge" "$MC_VERSION" "$NEOFORGE_VERSION"
@@ -324,6 +343,7 @@ main_menu() {
     esac
 }
 
+# Prüfen, ob schon eine Auswahl getroffen wurde
 if [ -f "$SELECTION_FILE" ]; then
     if [ -f "start.sh" ]; then
         echo "Using previously selected server configuration..."
@@ -334,5 +354,6 @@ if [ -f "$SELECTION_FILE" ]; then
         main_menu
     fi
 else
+    # Keine Auswahl -> Menü anzeigen
     main_menu
 fi
