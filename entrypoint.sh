@@ -97,16 +97,16 @@ filter_vanilla_prerelease() {
     grep -E 'pre|rc'
 }
 
-# Für Projekte über die mcjars.app API
+# Neue download_from_mcjars Funktion mit dem neuen Endpunkt
 download_from_mcjars() {
     local TYPE="$1"
     local MC_VERSION="$2"
-    JSON=$(curl -s "https://versions.mcjars.app/api/v2/builds/${TYPE}")
+    JSON=$(curl -s "https://versions.mcjars.app/api/v2/builds/${TYPE}/${MC_VERSION}")
     if [ -z "$JSON" ] || [ "$(echo "$JSON" | jq -r '.success')" != "true" ]; then
-        echo "Failed to fetch data for ${TYPE}"
+        echo "Failed to fetch data for ${TYPE}/${MC_VERSION}"
         exit 1
     fi
-    JAR_URL=$(echo "$JSON" | jq -r '.builds["'"$MC_VERSION"'"].latest.jarUrl')
+    JAR_URL=$(echo "$JSON" | jq -r '.latest.jarUrl')
     if [ "$JAR_URL" = "null" ]; then
         echo "Version $MC_VERSION not found for $TYPE"
         exit 1
@@ -221,7 +221,6 @@ menu_vanilla() {
     read -r option
 
     if [ $option -eq 4 ]; then
-        # Leaves ist ein eigener TYPE
         TYPE="LEAVES"
         ALL_VERSIONS=$(get_all_versions "$TYPE")
         echo "Available versions for LEAVES:"
@@ -234,7 +233,6 @@ menu_vanilla() {
         create_start_script
         exit 0
     else
-        # Für Full, Snapshot, Pre-Release nutzen wir immer TYPE="VANILLA" und filtern
         TYPE="VANILLA"
         ALL_VERSIONS=$(get_all_versions "$TYPE")
         case $option in
@@ -286,7 +284,6 @@ menu_modded() {
             eula_check
             install_forge "$MC_VERSION" "$FORGE_VERSION"
             save_selection "Modded" "Forge" "$MC_VERSION" "$FORGE_VERSION"
-            create_start_script
             exit 0
             ;;
         2)
@@ -298,7 +295,6 @@ menu_modded() {
             eula_check
             install_neoforge "$NEOFORGE_VERSION"
             save_selection "Modded" "NeoForge" "$MC_VERSION" "$NEOFORGE_VERSION"
-            create_start_script
             exit 0
             ;;
         3)
