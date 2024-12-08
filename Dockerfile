@@ -29,7 +29,7 @@ COPY --from=java17 /opt/java/openjdk $JAVA17_HOME
 COPY --from=java21 /opt/java/openjdk $JAVA21_HOME
 
 # Standard-Java-Version auf 11 setzen
-ENV JAVA_HOME=$JAVA11_HOME
+ENV JAVA_HOME=$JAVA21_HOME
 ENV PATH=$JAVA_HOME/bin:$PATH
 
 # Benutzer "container" anlegen und Verzeichnis setzen

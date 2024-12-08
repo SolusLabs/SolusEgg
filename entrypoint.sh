@@ -33,7 +33,7 @@ download_file() {
 }
 
 select_minecraft_version() {
-    echo "Please enter the desired Minecraft version (e.g. 1.20.1):"
+    echo "Please enter the desired Minecraft version (e.g. 1.21.1):"
     read -r MC_VERSION
     if [ -z "$MC_VERSION" ]; then
         MC_VERSION=$(curl -s https://launchermeta.mojang.com/mc/game/version_manifest.json | jq -r '.latest.release')
@@ -130,8 +130,8 @@ install_forge() {
     DOWNLOAD_URL="https://maven.minecraftforge.net/net/minecraftforge/forge/${MC_VERSION}-${FORGE_VERSION}/forge-${MC_VERSION}-${FORGE_VERSION}-installer.jar"
     download_file "${DOWNLOAD_URL}" "forge-installer.jar"
     java -jar forge-installer.jar --installServer
-    mv forge-*.jar server.jar 2>/dev/null || true
-    rm forge-installer.jar
+    mv forge-*.jarjar server.jar 2>/dev/null || true
+    rm forge-installer.
 }
 
 install_fabric() {
@@ -182,14 +182,14 @@ save_selection() {
 }
 
 create_start_script() {
-    cat > start.sh <<EOF
+    cat > run.sh <<EOF
 #!/bin/bash
 MODIFIED_STARTUP=\`eval echo \$(echo \${STARTUP} | sed -e 's/{{/\${/g' -e 's/}}/}/g')\`
 echo ":/home/container \$ \${MODIFIED_STARTUP}"
 \${MODIFIED_STARTUP}
 EOF
-    chmod +x start.sh
-    echo "start.sh created."
+    chmod +x run.sh
+    echo "run.sh created."
 }
 
 menu_minecraft_proxy() {
@@ -257,7 +257,7 @@ main_menu() {
 }
 
 if [ -f "$SELECTION_FILE" ]; then
-    ./start.sh
+    ./run.sh
     exit 0
 else
     main_menu
