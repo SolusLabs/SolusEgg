@@ -21,8 +21,8 @@ ${RESET}
 }
 
 download_file() {
-    url="$1"
-    output="$2"
+    local url="$1"
+    local output="$2"
     echo "Downloading: $url"
     curl -s -L -o "${output}" "${url}"
     if [ $? -ne 0 ]; then
@@ -32,19 +32,36 @@ download_file() {
     echo "Download complete: ${output}"
 }
 
-select_minecraft_version() {
-    echo "Please enter the desired Minecraft version (e.g. 1.21.1):"
-    read -r MC_VERSION
-    if [ -z "$MC_VERSION" ]; then
-        MC_VERSION=$(curl -s https://launchermeta.mojang.com/mc/game/version_manifest.json | jq -r '.latest.release')
+eula_check() {
+    echo "Do you accept the EULA? (yes/no)"
+    read -r EULA_ANSWER
+    if [ "$EULA_ANSWER" != "yes" ]; then
+        echo "You must accept the EULA to continue."
+        exit 1
     fi
-    echo "Selected Minecraft version: $MC_VERSION"
+    echo "eula=true" > eula.txt
+}
+
+save_selection() {
+    echo "$1:$2:$3:$4" > "$SELECTION_FILE"
+    echo "Selection saved: $1 - $2 - $3 - $4"
+}
+
+create_start_script() {
+    cat > run.sh <<EOF
+#!/bin/bash
+MODIFIED_STARTUP=\`eval echo \$(echo \${STARTUP} | sed -e 's/{{/\${/g' -e 's/}}/}/g')\`
+echo ":/home/container \$ \${MODIFIED_STARTUP}"
+\${MODIFIED_STARTUP}
+EOF
+    chmod +x run.sh
+    echo "run.sh created."
 }
 
 print_in_columns() {
     list=($1)
     count=0
-    for v in ${list[@]}; do
+    for v in "${list[@]}"; do
         printf "%-20s" "$v"
         count=$((count+1))
         if [ $count -eq 3 ]; then
@@ -55,6 +72,46 @@ print_in_columns() {
     if [ $count -ne 0 ]; then
         echo ""
     fi
+}
+
+get_all_versions() {
+    local TYPE="$1"
+    JSON=$(curl -s "https://versions.mcjars.app/api/v2/lookups/versions/${TYPE}")
+    if [ -z "$JSON" ] || [ "$(echo "$JSON" | jq -r '.success')" != "true" ]; then
+        echo "Failed to fetch versions for ${TYPE}"
+        exit 1
+    fi
+    ALL_VERSIONS=$(echo "$JSON" | jq -r '.versions | keys[]')
+    echo "$ALL_VERSIONS"
+}
+
+filter_vanilla_full() {
+    grep -E '^[0-9].*' | grep -v 'w' | grep -v 'pre' | grep -v 'rc'
+}
+
+filter_vanilla_snapshot() {
+    grep 'w'
+}
+
+filter_vanilla_prerelease() {
+    grep -E 'pre|rc'
+}
+
+# Für Projekte über die mcjars.app API
+download_from_mcjars() {
+    local TYPE="$1"
+    local MC_VERSION="$2"
+    JSON=$(curl -s "https://versions.mcjars.app/api/v2/builds/${TYPE}")
+    if [ -z "$JSON" ] || [ "$(echo "$JSON" | jq -r '.success')" != "true" ]; then
+        echo "Failed to fetch data for ${TYPE}"
+        exit 1
+    fi
+    JAR_URL=$(echo "$JSON" | jq -r '.builds["'"$MC_VERSION"'"].latest.jarUrl')
+    if [ "$JAR_URL" = "null" ]; then
+        echo "Version $MC_VERSION not found for $TYPE"
+        exit 1
+    fi
+    download_file "$JAR_URL" "server.jar"
 }
 
 print_forge_versions() {
@@ -76,20 +133,15 @@ print_forge_versions() {
     echo ""
 }
 
-print_fabric_versions() {
+install_forge() {
     MC_VERSION="$1"
-    FABRIC_URL="https://meta.fabricmc.net/v2/versions/loader/${MC_VERSION}"
-    JSON=$(curl -s "$FABRIC_URL")
-    COUNT=$(echo "$JSON" | jq '. | length')
-    if [ "$COUNT" -eq 0 ]; then
-        echo "No Fabric loader versions found for Minecraft $MC_VERSION."
-        exit 1
-    fi
-    FABRIC_VERSIONS=$(echo "$JSON" | jq -r '.[].loader.version')
-    echo ""
-    echo "Available Fabric loader versions for Minecraft $MC_VERSION:"
-    print_in_columns "$(echo "$FABRIC_VERSIONS")"
-    echo ""
+    FORGE_VERSION="$2"
+    echo "Installing Forge ${MC_VERSION}-${FORGE_VERSION}"
+    DOWNLOAD_URL="https://maven.minecraftforge.net/net/minecraftforge/forge/${MC_VERSION}-${FORGE_VERSION}/forge-${MC_VERSION}-${FORGE_VERSION}-installer.jar"
+    download_file "${DOWNLOAD_URL}" "forge-installer.jar"
+    java -jar forge-installer.jar --installServer
+    mv forge-*.jar server.jar 2>/dev/null || true
+    rm forge-installer.jar
 }
 
 print_neoforge_versions_new() {
@@ -108,85 +160,6 @@ print_neoforge_versions_new() {
     echo ""
 }
 
-install_buildtools() {
-    BUILD_DIR="/home/container/.breaker/buildtools"
-    mkdir -p "$BUILD_DIR"
-    curl -s -L "https://hub.spigotmc.org/jenkins/job/BuildTools/lastSuccessfulBuild/artifact/target/BuildTools.jar" -o "$BUILD_DIR/BuildTools.jar"
-}
-
-compile_spigot() {
-    MC_VERSION="$1"
-    install_buildtools
-    BUILD_DIR="/home/container/.breaker/buildtools"
-    cd "$BUILD_DIR" || exit 1
-    java -Xms256M -jar BuildTools.jar --rev "${MC_VERSION}" --compile SPIGOT
-    mv Spigot/Spigot-Server/target/spigot-*.jar /home/container/server.jar
-    find . ! -name 'BuildTools.jar' -exec rm -rf {} + > /dev/null 2>&1
-    cd /home/container || exit 1
-}
-
-eula_check() {
-    echo "Do you accept the EULA? (yes/no)"
-    read -r EULA_ANSWER
-    if [ "$EULA_ANSWER" != "yes" ]; then
-        echo "You must accept the EULA to continue."
-        exit 1
-    fi
-    echo "eula=true" > eula.txt
-}
-
-install_paper() {
-    MC_VERSION="$1"
-    PAPER_VERSION=$(curl -s https://papermc.io/api/v2/projects/paper | jq -r '.versions[]' | grep "$MC_VERSION" | tail -n1)
-    if [ -z "$PAPER_VERSION" ]; then
-        PAPER_VERSION=$(curl -s https://papermc.io/api/v2/projects/paper | jq -r '.versions[-1]')
-    fi
-    LATEST_BUILD=$(curl -s "https://papermc.io/api/v2/projects/paper/versions/${PAPER_VERSION}" | jq -r '.builds[-1]')
-    echo "Installing PaperMC ${PAPER_VERSION}-${LATEST_BUILD}"
-    download_file "https://papermc.io/api/v2/projects/paper/versions/${PAPER_VERSION}/builds/${LATEST_BUILD}/downloads/paper-${PAPER_VERSION}-${LATEST_BUILD}.jar" "server.jar"
-}
-
-install_purpur() {
-    MC_VERSION="$1"
-    PURPUR_VERSION=$(curl -s https://api.purpurmc.org/v2/purpur | jq -r '.versions[]' | grep "$MC_VERSION" | tail -n1)
-    if [ -z "$PURPUR_VERSION" ]; then
-        PURPUR_VERSION=$(curl -s https://api.purpurmc.org/v2/purpur | jq -r '.versions[-1]')
-    fi
-    echo "Installing Purpur ${PURPUR_VERSION}"
-    download_file "https://api.purpurmc.org/v2/purpur/${PURPUR_VERSION}/latest/download" "server.jar"
-}
-
-install_spigot() {
-    MC_VERSION="$1"
-    echo "Installing Spigot for ${MC_VERSION}"
-    compile_spigot "$MC_VERSION"
-}
-
-install_vanilla() {
-    MC_VERSION="$1"
-    echo "Installing Vanilla Minecraft ${MC_VERSION}"
-    download_file "https://s3.amazonaws.com/Minecraft.Download/versions/${MC_VERSION}/minecraft_server.${MC_VERSION}.jar" "server.jar"
-}
-
-install_forge() {
-    MC_VERSION="$1"
-    FORGE_VERSION="$2"
-    echo "Installing Forge ${MC_VERSION}-${FORGE_VERSION}"
-    DOWNLOAD_URL="https://maven.minecraftforge.net/net/minecraftforge/forge/${MC_VERSION}-${FORGE_VERSION}/forge-${MC_VERSION}-${FORGE_VERSION}-installer.jar"
-    download_file "${DOWNLOAD_URL}" "forge-installer.jar"
-    java -jar forge-installer.jar --installServer
-    mv forge-*.jar server.jar 2>/dev/null || true
-    rm forge-installer.jar
-}
-
-install_fabric() {
-    MC_VERSION="$1"
-    FABRIC_VERSION="$2"
-    echo "Installing Fabric Loader ${FABRIC_VERSION} for Minecraft ${MC_VERSION}"
-    FABRIC_PROFILE_URL="https://meta.fabricmc.net/v2/versions/loader/${MC_VERSION}/${FABRIC_VERSION}/profile/json"
-    download_file "${FABRIC_PROFILE_URL}" "fabric-installer.json"
-}
-
 install_neoforge() {
     NEOFORGE_VERSION="$1"
     echo "Installing NeoForge ${NEOFORGE_VERSION}"
@@ -197,118 +170,202 @@ install_neoforge() {
     rm neoforge-installer.jar
 }
 
-install_velocity() {
-    VELOCITY_VERSION=$(curl -s https://api.papermc.io/v2/projects/velocity | jq -r '.versions[-1]')
-    LATEST_BUILD=$(curl -s "https://api.papermc.io/v2/projects/velocity/versions/${VELOCITY_VERSION}" | jq -r '.builds[-1]')
-    echo "Installing Velocity ${VELOCITY_VERSION}-${LATEST_BUILD}"
-    download_file "https://api.papermc.io/v2/projects/velocity/versions/${VELOCITY_VERSION}/builds/${LATEST_BUILD}/downloads/velocity-${VELOCITY_VERSION}-${LATEST_BUILD}.jar" "server.jar"
-}
 
-install_waterfall() {
-    WATERFALL_VERSION=$(curl -s https://papermc.io/api/v2/projects/waterfall | jq -r '.versions[-1]')
-    LATEST_BUILD=$(curl -s "https://papermc.io/api/v2/projects/waterfall/versions/${WATERFALL_VERSION}" | jq -r '.builds[-1]')
-    echo "Installing Waterfall ${WATERFALL_VERSION}-${LATEST_BUILD}"
-    download_file "https://papermc.io/api/v2/projects/waterfall/versions/${WATERFALL_VERSION}/builds/${LATEST_BUILD}/downloads/waterfall-${WATERFALL_VERSION}-${LATEST_BUILD}.jar" "server.jar"
-}
-
-install_bungeecord() {
-    BUNGEE_BUILD=$(curl -s https://ci.md-5.net/job/BungeeCord/lastSuccessfulBuild/buildNumber)
-    echo "Installing Bungeecord build ${BUNGEE_BUILD}"
-    download_file "https://ci.md-5.net/job/BungeeCord/lastSuccessfulBuild/artifact/bootstrap/target/BungeeCord.jar" "server.jar"
-}
-
-save_selection() {
-    echo "$1:$2:$3:$4" > "$SELECTION_FILE"
-    echo "Selection saved: $1 - $2 - $3 - $4"
-}
-
-create_start_script() {
-    cat > run.sh <<EOF
-#!/bin/bash
-MODIFIED_STARTUP=\`eval echo \$(echo \${STARTUP} | sed -e 's/{{/\${/g' -e 's/}}/}/g')\`
-echo ":/home/container \$ \${MODIFIED_STARTUP}"
-\${MODIFIED_STARTUP}
-EOF
-    chmod +x run.sh
-    echo "run.sh created."
-}
-
-menu_minecraft_proxy() {
+menu_plugins() {
     header
-    echo "=== Minecraft Proxy Installation ==="
-    echo "1) Install Velocity"
-    echo "2) Install Waterfall"
-    echo "3) Install Bungeecord"
+    echo "=== Plugins (Bukkit-like) ==="
+    echo "1) Paper"
+    echo "2) Pufferfish"
+    echo "3) Spigot"
+    echo "4) Folia"
+    echo "5) Purpur"
+    echo "6) Quilt"
+    echo "7) Canvas"
     echo "0) Back"
-    echo "Select an option (e.g. 3): "
+    echo "Select an option: "
     read -r option
+
     case $option in
-        1) eula_check; install_velocity; save_selection "Proxy" "Velocity" "latest" ""; create_start_script; exit 0 ;;
-        2) eula_check; install_waterfall; save_selection "Proxy" "Waterfall" "latest" ""; create_start_script; exit 0 ;;
-        3) eula_check; install_bungeecord; save_selection "Proxy" "Bungeecord" "latest" ""; create_start_script; exit 0 ;;
-        0) main_menu ;;
-        *) echo "Invalid option!"; sleep 1; menu_minecraft_proxy ;;
+        1) TYPE="PAPER" ;;
+        2) TYPE="PUFFERFISH" ;;
+        3) TYPE="SPIGOT" ;;
+        4) TYPE="FOLIA" ;;
+        5) TYPE="PURPUR" ;;
+        6) TYPE="QUILT" ;;
+        7) TYPE="CANVAS" ;;
+        0) menu_main; return ;;
+        *) echo "Invalid option!"; sleep 1; menu_plugins; return ;;
+    esac
+
+    ALL_VERSIONS=$(get_all_versions "$TYPE")
+    echo "Available Minecraft versions for $TYPE:"
+    print_in_columns "$(echo "$ALL_VERSIONS")"
+    echo "Please enter a Minecraft version from the above list:"
+    read -r MC_VERSION
+    eula_check
+    download_from_mcjars "$TYPE" "$MC_VERSION"
+    save_selection "Plugins" "$TYPE" "$MC_VERSION" ""
+    create_start_script
+    exit 0
+}
+
+menu_vanilla() {
+    header
+    echo "=== Vanilla Options ==="
+    echo "1) Full versions"
+    echo "2) Snapshots"
+    echo "3) Pre-Releases"
+    echo "4) Leaves"
+    echo "0) Back"
+    echo "Select an option: "
+    read -r option
+
+    if [ $option -eq 4 ]; then
+        # Leaves ist ein eigener TYPE
+        TYPE="LEAVES"
+        ALL_VERSIONS=$(get_all_versions "$TYPE")
+        echo "Available versions for LEAVES:"
+        print_in_columns "$(echo "$ALL_VERSIONS")"
+        echo "Please enter a Minecraft version:"
+        read -r MC_VERSION
+        eula_check
+        download_from_mcjars "$TYPE" "$MC_VERSION"
+        save_selection "Vanilla" "Leaves" "$MC_VERSION" ""
+        create_start_script
+        exit 0
+    else
+        # Für Full, Snapshot, Pre-Release nutzen wir immer TYPE="VANILLA" und filtern
+        TYPE="VANILLA"
+        ALL_VERSIONS=$(get_all_versions "$TYPE")
+        case $option in
+            1) FILTERED=$(echo "$ALL_VERSIONS" | filter_vanilla_full) ; CATEGORY="Vanilla-Full" ;;
+            2) FILTERED=$(echo "$ALL_VERSIONS" | filter_vanilla_snapshot) ; CATEGORY="Vanilla-Snapshot" ;;
+            3) FILTERED=$(echo "$ALL_VERSIONS" | filter_vanilla_prerelease) ; CATEGORY="Vanilla-PreRelease" ;;
+            0) menu_main; return ;;
+            *) echo "Invalid option!"; sleep 1; menu_vanilla; return ;;
+        esac
+
+        if [ -z "$FILTERED" ]; then
+            echo "No matching versions found."
+            sleep 1
+            menu_vanilla
+            return
+        fi
+
+        echo "Available versions:"
+        print_in_columns "$(echo "$FILTERED")"
+        echo "Please enter a Minecraft version from the above list:"
+        read -r MC_VERSION
+        eula_check
+        download_from_mcjars "$TYPE" "$MC_VERSION"
+        save_selection "Vanilla" "$CATEGORY" "$MC_VERSION" ""
+        create_start_script
+        exit 0
+    fi
+}
+
+menu_modded() {
+    header
+    echo "=== Modded Options ==="
+    echo "1) Forge"
+    echo "2) NeoForge"
+    echo "3) Fabric"
+    echo "4) Mohist"
+    echo "5) Sponge"
+    echo "0) Back"
+    echo "Select an option: "
+    read -r option
+
+    case $option in
+        1)
+            echo "Please enter the desired Minecraft version (e.g. 1.20.1):"
+            read -r MC_VERSION
+            print_forge_versions "$MC_VERSION"
+            read -r -p "Please choose a Forge version: " FORGE_VERSION
+            if ! print_forge_versions "$MC_VERSION" | grep -wq "$FORGE_VERSION"; then echo "Invalid Forge version selected!"; exit 1; fi
+            eula_check
+            install_forge "$MC_VERSION" "$FORGE_VERSION"
+            save_selection "Modded" "Forge" "$MC_VERSION" "$FORGE_VERSION"
+            create_start_script
+            exit 0
+            ;;
+        2)
+            echo "Please enter the desired Minecraft version (e.g. 1.20.1):"
+            read -r MC_VERSION
+            print_neoforge_versions_new "$MC_VERSION"
+            read -r -p "Please choose a NeoForge version: " NEOFORGE_VERSION
+            if ! print_neoforge_versions_new "$MC_VERSION" | grep -wq "$NEOFORGE_VERSION"; then echo "Invalid NeoForge version selected!"; exit 1; fi
+            eula_check
+            install_neoforge "$NEOFORGE_VERSION"
+            save_selection "Modded" "NeoForge" "$MC_VERSION" "$NEOFORGE_VERSION"
+            create_start_script
+            exit 0
+            ;;
+        3)
+            TYPE="FABRIC"
+            ALL_VERSIONS=$(get_all_versions "$TYPE")
+            echo "Available Minecraft versions for $TYPE:"
+            print_in_columns "$(echo "$ALL_VERSIONS")"
+            echo "Please enter a Minecraft version:"
+            read -r MC_VERSION
+            eula_check
+            download_from_mcjars "$TYPE" "$MC_VERSION"
+            save_selection "Modded" "Fabric" "$MC_VERSION" ""
+            create_start_script
+            exit 0
+            ;;
+        4)
+            TYPE="MOHIST"
+            ALL_VERSIONS=$(get_all_versions "$TYPE")
+            echo "Available Minecraft versions for $TYPE:"
+            print_in_columns "$(echo "$ALL_VERSIONS")"
+            echo "Please enter a Minecraft version:"
+            read -r MC_VERSION
+            eula_check
+            download_from_mcjars "$TYPE" "$MC_VERSION"
+            save_selection "Modded" "Mohist" "$MC_VERSION" ""
+            create_start_script
+            exit 0
+            ;;
+        5)
+            TYPE="SPONGE"
+            ALL_VERSIONS=$(get_all_versions "$TYPE")
+            echo "Available Minecraft versions for $TYPE:"
+            print_in_columns "$(echo "$ALL_VERSIONS")"
+            echo "Please enter a Minecraft version:"
+            read -r MC_VERSION
+            eula_check
+            download_from_mcjars "$TYPE" "$MC_VERSION"
+            save_selection "Modded" "Sponge" "$MC_VERSION" ""
+            create_start_script
+            exit 0
+            ;;
+        0) menu_main ;;
+        *) echo "Invalid option!"; sleep 1; menu_modded ;;
     esac
 }
 
-menu_minecraft_java() {
-    header
-    echo "=== Minecraft Java Edition Server Installation ==="
-    echo "1) Install PaperMC"
-    echo "2) Install Purpur"
-    echo "3) Install Spigot"
-    echo "4) Install Vanilla"
-    echo "5) Install Forge"
-    echo "6) Install Fabric"
-    echo "7) Install NeoForge"
-    echo "0) Back"
-    echo "Select an option (e.g. 7): "
-    read -r option
-    select_minecraft_version
-    case $option in
-        1) eula_check; install_paper "$MC_VERSION"; save_selection "Java" "PaperMC" "$MC_VERSION" ""; create_start_script; exit 0 ;;
-        2) eula_check; install_purpur "$MC_VERSION"; save_selection "Java" "Purpur" "$MC_VERSION" ""; create_start_script; exit 0 ;;
-        3) eula_check; install_spigot "$MC_VERSION"; save_selection "Java" "Spigot" "$MC_VERSION" ""; create_start_script; exit 0 ;;
-        4) eula_check; install_vanilla "$MC_VERSION"; save_selection "Java" "Vanilla" "$MC_VERSION" ""; create_start_script; exit 0 ;;
-        5) print_forge_versions "$MC_VERSION"; read -r -p "Please choose a Forge version: " FORGE_VERSION; if ! print_forge_versions "$MC_VERSION" | grep -wq "$FORGE_VERSION"; then echo "Invalid Forge version selected!"; exit 1; fi; eula_check; install_forge "$MC_VERSION" "$FORGE_VERSION"; save_selection "Java" "Forge" "$MC_VERSION" "$FORGE_VERSION"; exit 0 ;;
-        6) print_fabric_versions "$MC_VERSION"; read -r -p "Please choose a Fabric loader version: " FABRIC_VERSION; if ! print_fabric_versions "$MC_VERSION" | grep -wq "$FABRIC_VERSION"; then echo "Invalid Fabric version selected!"; exit 1; fi; eula_check; install_fabric "$MC_VERSION" "$FABRIC_VERSION"; save_selection "Java" "Fabric" "$MC_VERSION" "$FABRIC_VERSION"; exit 0 ;;
-        7) print_neoforge_versions_new "$MC_VERSION"; read -r -p "Please choose a NeoForge version: " NEOFORGE_VERSION; if ! print_neoforge_versions_new "$MC_VERSION" | grep -wq "$NEOFORGE_VERSION"; then echo "Invalid NeoForge version selected!"; exit 1; fi; eula_check; install_neoforge "$NEOFORGE_VERSION"; save_selection "Java" "NeoForge" "$MC_VERSION" "$NEOFORGE_VERSION"; exit 0 ;;
-        0) main_menu ;;
-        *) echo "Invalid option!"; sleep 1; menu_minecraft_java ;;
-    esac
-}
-
-main_menu() {
+menu_main() {
     header
     echo "=== Main Menu ==="
-    echo "1) Minecraft Proxy"
-    echo "2) Minecraft Java Edition Server"
-    echo "3) More coming soon"
+    echo "1) Plugins (Paper, Purpur, Spigot, etc.)"
+    echo "2) Vanilla (Full, Snapshots, Pre-Releases, Leaves)"
+    echo "3) Modded (Forge, NeoForge, Fabric, Mohist, Sponge)"
     echo "0) Exit"
-    echo -n "Select an option: "
+    echo "Select an option: "
     read -r option
     case $option in
-        1) menu_minecraft_proxy ;;
-        2) menu_minecraft_java ;;
-        3) echo "More options will be added soon!"; sleep 1; main_menu ;;
+        1) menu_plugins ;;
+        2) menu_vanilla ;;
+        3) menu_modded ;;
         0) echo "Exiting..."; exit 0 ;;
-        *) echo "Invalid option!"; sleep 1; main_menu ;;
+        *) echo "Invalid option!"; sleep 1; menu_main ;;
     esac
-}
-
-eula_check() {
-    echo "Do you accept the EULA? (yes/no)"
-    read -r EULA_ANSWER
-    if [ "$EULA_ANSWER" != "yes" ]; then
-        echo "You must accept the EULA to continue."
-        exit 1
-    fi
-    echo "eula=true" > eula.txt
 }
 
 if [ -f "$SELECTION_FILE" ]; then
     ./run.sh
     exit 0
 else
-    main_menu
+    menu_main
 fi
