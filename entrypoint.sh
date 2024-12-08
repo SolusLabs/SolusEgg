@@ -106,7 +106,7 @@ download_from_mcjars() {
         echo "Failed to fetch data for ${TYPE}/${MC_VERSION}"
         exit 1
     fi
-    JAR_URL=$(echo "$JSON" | jq -r '.latest.jarUrl')
+    JAR_URL=$(echo "$JSON" | jq -r '.builds[0].jarUrl')
     if [ "$JAR_URL" = "null" ]; then
         echo "Version $MC_VERSION not found for $TYPE"
         exit 1
