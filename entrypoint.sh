@@ -41,6 +41,22 @@ select_minecraft_version() {
     echo "Selected Minecraft version: $MC_VERSION"
 }
 
+print_in_columns() {
+    list=($1)
+    count=0
+    for v in ${list[@]}; do
+        printf "%-20s" "$v"
+        count=$((count+1))
+        if [ $count -eq 3 ]; then
+            echo ""
+            count=0
+        fi
+    done
+    if [ $count -ne 0 ]; then
+        echo ""
+    fi
+}
+
 print_forge_versions() {
     MC_VERSION="$1"
     FORGE_URL="https://files.minecraftforge.net/net/minecraftforge/forge/index_${MC_VERSION}.html"
@@ -56,7 +72,7 @@ print_forge_versions() {
     fi
     echo ""
     echo "Available Forge versions for Minecraft $MC_VERSION:"
-    echo "$VERSIONS"
+    print_in_columns "$(echo "$VERSIONS")"
     echo ""
 }
 
@@ -69,26 +85,37 @@ print_fabric_versions() {
         echo "No Fabric loader versions found for Minecraft $MC_VERSION."
         exit 1
     fi
+    FABRIC_VERSIONS=$(echo "$JSON" | jq -r '.[].loader.version')
     echo ""
     echo "Available Fabric loader versions for Minecraft $MC_VERSION:"
-    echo "$JSON" | jq -r '.[].loader.version'
+    print_in_columns "$(echo "$FABRIC_VERSIONS")"
     echo ""
 }
 
-print_neoforge_versions() {
+print_neoforge_versions_new() {
     MC_VERSION="$1"
-    NEOFORGE_URL="https://maven.neoforged.net/net/neoforged/neoforge/promotions_slim.json"
-    JSON=$(curl -s "$NEOFORGE_URL")
-    PROMOS=$(echo "$JSON" | jq -r '.promos | keys[]' | grep "$MC_VERSION")
-    if [ -z "$PROMOS" ]; then
+    RAW=$(curl -s "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge")
+    ALL_NEO=$(echo "$RAW" | jq -r '.versions[]')
+    PART=$(echo "$MC_VERSION" | cut -d '.' -f 2-)
+    MATCH=$(echo "$ALL_NEO" | grep "^${PART}")
+    if [ -z "$MATCH" ]; then
         echo "No NeoForge versions found for Minecraft $MC_VERSION."
         exit 1
     fi
     echo ""
     echo "Available NeoForge versions for Minecraft $MC_VERSION:"
-    NEO_VERSIONS=$(echo "$PROMOS" | sed "s/${MC_VERSION}-//g")
-    echo "$NEO_VERSIONS"
+    print_in_columns "$(echo "$MATCH")"
     echo ""
+}
+
+eula_check() {
+    echo "Do you accept the EULA? (yes/no)"
+    read -r EULA_ANSWER
+    if [ "$EULA_ANSWER" != "yes" ]; then
+        echo "You must accept the EULA to continue."
+        exit 1
+    fi
+    echo "eula=true" > eula.txt
 }
 
 install_paper() {
@@ -130,8 +157,8 @@ install_forge() {
     DOWNLOAD_URL="https://maven.minecraftforge.net/net/minecraftforge/forge/${MC_VERSION}-${FORGE_VERSION}/forge-${MC_VERSION}-${FORGE_VERSION}-installer.jar"
     download_file "${DOWNLOAD_URL}" "forge-installer.jar"
     java -jar forge-installer.jar --installServer
-    mv forge-*.jarjar server.jar 2>/dev/null || true
-    rm forge-installer.
+    mv forge-*.jar server.jar 2>/dev/null || true
+    rm forge-installer.jar
 }
 
 install_fabric() {
@@ -143,10 +170,9 @@ install_fabric() {
 }
 
 install_neoforge() {
-    MC_VERSION="$1"
-    NEOFORGE_VERSION="$2"
-    echo "Installing NeoForge ${MC_VERSION}-${NEOFORGE_VERSION}"
-    DOWNLOAD_URL="https://maven.neoforged.net/net/neoforged/neoforge/${MC_VERSION}-${NEOFORGE_VERSION}/neoforge-${MC_VERSION}-${NEOFORGE_VERSION}-installer.jar"
+    NEOFORGE_VERSION="$1"
+    echo "Installing NeoForge ${NEOFORGE_VERSION}"
+    DOWNLOAD_URL="https://maven.neoforged.net/releases/net/neoforged/neoforge/${NEOFORGE_VERSION}/neoforge-${NEOFORGE_VERSION}-installer.jar"
     download_file "${DOWNLOAD_URL}" "neoforge-installer.jar"
     java -jar neoforge-installer.jar --installServer
     mv neoforge-*.jar server.jar 2>/dev/null || true
@@ -203,9 +229,9 @@ menu_minecraft_proxy() {
     read -r option
     select_minecraft_version
     case $option in
-        1) install_velocity "$MC_VERSION"; save_selection "Proxy" "Velocity" "$MC_VERSION" ""; create_start_script; exit 0 ;;
-        2) install_waterfall "$MC_VERSION"; save_selection "Proxy" "Waterfall" "$MC_VERSION" ""; create_start_script; exit 0 ;;
-        3) install_bungeecord "$MC_VERSION"; save_selection "Proxy" "Bungeecord" "$MC_VERSION" ""; create_start_script; exit 0 ;;
+        1) eula_check; install_velocity "$MC_VERSION"; save_selection "Proxy" "Velocity" "$MC_VERSION" ""; create_start_script; exit 0 ;;
+        2) eula_check; install_waterfall "$MC_VERSION"; save_selection "Proxy" "Waterfall" "$MC_VERSION" ""; create_start_script; exit 0 ;;
+        3) eula_check; install_bungeecord "$MC_VERSION"; save_selection "Proxy" "Bungeecord" "$MC_VERSION" ""; create_start_script; exit 0 ;;
         0) main_menu ;;
         *) echo "Invalid option!"; sleep 1; menu_minecraft_proxy ;;
     esac
@@ -226,13 +252,13 @@ menu_minecraft_java() {
     read -r option
     select_minecraft_version
     case $option in
-        1) install_paper "$MC_VERSION"; save_selection "Java" "PaperMC" "$MC_VERSION" ""; create_start_script; exit 0 ;;
-        2) install_purpur "$MC_VERSION"; save_selection "Java" "Purpur" "$MC_VERSION" ""; create_start_script; exit 0 ;;
-        3) install_spigot "$MC_VERSION"; save_selection "Java" "Spigot" "$MC_VERSION" ""; create_start_script; exit 0 ;;
-        4) install_vanilla "$MC_VERSION"; save_selection "Java" "Vanilla" "$MC_VERSION" ""; create_start_script; exit 0 ;;
-        5) print_forge_versions "$MC_VERSION"; read -r -p "Please choose a Forge version: " FORGE_VERSION; if ! print_forge_versions "$MC_VERSION" | grep -q "^${FORGE_VERSION}\$"; then echo "Invalid Forge version selected!"; exit 1; fi; install_forge "$MC_VERSION" "$FORGE_VERSION"; save_selection "Java" "Forge" "$MC_VERSION" "$FORGE_VERSION"; exit 0 ;;
-        6) print_fabric_versions "$MC_VERSION"; read -r -p "Please choose a Fabric loader version: " FABRIC_VERSION; if ! print_fabric_versions "$MC_VERSION" | grep -q "^${FABRIC_VERSION}\$"; then echo "Invalid Fabric version selected!"; exit 1; fi; install_fabric "$MC_VERSION" "$FABRIC_VERSION"; save_selection "Java" "Fabric" "$MC_VERSION" "$FABRIC_VERSION"; create_start_script; exit 0 ;;
-        7) print_neoforge_versions "$MC_VERSION"; read -r -p "Please choose a NeoForge version: " NEOFORGE_VERSION; if ! print_neoforge_versions "$MC_VERSION" | grep -q "^${NEOFORGE_VERSION}\$"; then echo "Invalid NeoForge version selected!"; exit 1; fi; install_neoforge "$MC_VERSION" "$NEOFORGE_VERSION"; save_selection "Java" "NeoForge" "$MC_VERSION" "$NEOFORGE_VERSION"; exit 0 ;;
+        1) eula_check; install_paper "$MC_VERSION"; save_selection "Java" "PaperMC" "$MC_VERSION" ""; create_start_script; exit 0 ;;
+        2) eula_check; install_purpur "$MC_VERSION"; save_selection "Java" "Purpur" "$MC_VERSION" ""; create_start_script; exit 0 ;;
+        3) eula_check; install_spigot "$MC_VERSION"; save_selection "Java" "Spigot" "$MC_VERSION" ""; create_start_script; exit 0 ;;
+        4) eula_check; install_vanilla "$MC_VERSION"; save_selection "Java" "Vanilla" "$MC_VERSION" ""; create_start_script; exit 0 ;;
+        5) print_forge_versions "$MC_VERSION"; read -r -p "Please choose a Forge version: " FORGE_VERSION; if ! print_forge_versions "$MC_VERSION" | grep -wq "$FORGE_VERSION"; then echo "Invalid Forge version selected!"; exit 1; fi; eula_check; install_forge "$MC_VERSION" "$FORGE_VERSION"; save_selection "Java" "Forge" "$MC_VERSION" "$FORGE_VERSION"; create_start_script; exit 0 ;;
+        6) print_fabric_versions "$MC_VERSION"; read -r -p "Please choose a Fabric loader version: " FABRIC_VERSION; if ! print_fabric_versions "$MC_VERSION" | grep -wq "$FABRIC_VERSION"; then echo "Invalid Fabric version selected!"; exit 1; fi; eula_check; install_fabric "$MC_VERSION" "$FABRIC_VERSION"; save_selection "Java" "Fabric" "$MC_VERSION" "$FABRIC_VERSION"; create_start_script; exit 0 ;;
+        7) print_neoforge_versions_new "$MC_VERSION"; read -r -p "Please choose a NeoForge version: " NEOFORGE_VERSION; if ! print_neoforge_versions_new "$MC_VERSION" | grep -wq "$NEOFORGE_VERSION"; then echo "Invalid NeoForge version selected!"; exit 1; fi; eula_check; install_neoforge "$NEOFORGE_VERSION"; save_selection "Java" "NeoForge" "$MC_VERSION" "$NEOFORGE_VERSION"; create_start_script; exit 0 ;;
         0) main_menu ;;
         *) echo "Invalid option!"; sleep 1; menu_minecraft_java ;;
     esac
@@ -254,6 +280,16 @@ main_menu() {
         0) echo "Exiting..."; exit 0 ;;
         *) echo "Invalid option!"; sleep 1; main_menu ;;
     esac
+}
+
+eula_check() {
+    echo "Do you accept the EULA? (yes/no)"
+    read -r EULA_ANSWER
+    if [ "$EULA_ANSWER" != "yes" ]; then
+        echo "You must accept the EULA to continue."
+        exit 1
+    fi
+    echo "eula=true" > eula.txt
 }
 
 if [ -f "$SELECTION_FILE" ]; then
