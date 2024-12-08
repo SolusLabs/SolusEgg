@@ -7,7 +7,6 @@ RESET='\033[0m'
 cd /home/container || exit 1
 
 SELECTION_FILE="/home/container/.selected_minecraft"
-
 # Header anzeigen
 header() {
     clear
@@ -47,7 +46,6 @@ select_minecraft_version() {
     read -r MC_VERSION
     if [ -z "$MC_VERSION" ]; then
         echo "No version entered, using latest release."
-        # Hole neueste Vanilla-Version als Fallback
         MC_VERSION=$(curl -s https://launchermeta.mojang.com/mc/game/version_manifest.json | jq -r '.latest.release')
     fi
     echo "Selected Minecraft version: $MC_VERSION"
@@ -65,56 +63,51 @@ select_forge_version() {
     fi
 
     # Extrahiere Forge-Versionen
-    local VERSIONS=$(echo "$HTML" | grep -oP "forge-${MC_VERSION}-\K[0-9]+\.[0-9]+\.[0-9]+" | sort -V | uniq)
+    local VERSIONS=$(echo "$HTML" | grep -oE "forge-${MC_VERSION}-[0-9]+\.[0-9]+\.[0-9]+" | sed "s/forge-${MC_VERSION}-//" | sort -V | uniq)
 
     if [ -z "$VERSIONS" ]; then
         echo "No Forge versions for $MC_VERSION found."
         exit 1
     fi
 
+    echo ""
     echo "Available Forge versions for Minecraft $MC_VERSION:"
     echo "$VERSIONS"
+    echo ""
     echo -n "Please choose a Forge version: "
+    # Hier ganz normal einlesen
     read -r FORGE_VERSION
+    # FORGE_VERSION zurückgeben
     echo "$FORGE_VERSION"
 }
 
-# Für Fabric: Hole verfügbares Loader-Listing für gegebene MC-Version
+# Fabric Versionen wählen
 select_fabric_version() {
     local MC_VERSION="$1"
-    # Fabric API Endpoint für Loader-Versionen für eine spezifische MC-Version
     local FABRIC_URL="https://meta.fabricmc.net/v2/versions/loader/${MC_VERSION}"
     local JSON=$(curl -s "$FABRIC_URL")
 
-    # Prüfe, ob Ergebnisse vorhanden sind
     local COUNT=$(echo "$JSON" | jq '. | length')
     if [ "$COUNT" -eq 0 ]; then
         echo "No Fabric loader versions found for Minecraft $MC_VERSION."
         exit 1
     fi
 
+    echo ""
     echo "Available Fabric loader versions for Minecraft $MC_VERSION:"
-    # Liste Loader-Versionen
     echo "$JSON" | jq -r '.[].loader.version'
+    echo ""
     echo -n "Please choose a Fabric loader version: "
     read -r FABRIC_VERSION
     echo "$FABRIC_VERSION"
 }
 
-# Für NeoForge: Ähnlich wie Forge, wir nehmen an, dass es einen ähnlichen Endpoint gibt.
-# Wir nutzen Promotions-Slim ähnlich wie bei Forge, angenommen:
-# https://maven.neoforged.net/net/neoforged/neoforge/promotions_slim.json
+# NeoForge Versionen wählen
 select_neoforge_version() {
     local MC_VERSION="$1"
     local NEOFORGE_URL="https://maven.neoforged.net/net/neoforged/neoforge/promotions_slim.json"
     local JSON=$(curl -s "$NEOFORGE_URL")
 
-    # Hier gehen wir davon aus, dass .promos ähnlich wie bei Forge aufgebaut ist:
-    # "promos": {
-    #  "1.20.1-latest": "46.0.14",
-    #  ...
-    # }
-    # Extrahiere Versionskeys, die MC_VERSION enthalten
     local PROMOS=$(echo "$JSON" | jq -r '.promos | keys[]' | grep "$MC_VERSION")
 
     if [ -z "$PROMOS" ]; then
@@ -122,9 +115,10 @@ select_neoforge_version() {
         exit 1
     fi
 
+    echo ""
     echo "Available NeoForge versions for Minecraft $MC_VERSION:"
-    # Extrahiere nur den Zahlenanteil nach MC_VERSION-
     echo "$PROMOS" | sed "s/${MC_VERSION}-//g"
+    echo ""
     echo -n "Please choose a NeoForge version: "
     read -r NEOFORGE_VERSION
     echo "$NEOFORGE_VERSION"
@@ -138,7 +132,6 @@ install_paper() {
     local MC_VERSION="$1"
     local PAPER_VERSION=$(curl -s https://papermc.io/api/v2/projects/paper | jq -r '.versions[]' | grep "$MC_VERSION" | tail -n1)
     if [ -z "$PAPER_VERSION" ]; then
-        echo "No matching Paper version for $MC_VERSION found. Using latest."
         PAPER_VERSION=$(curl -s https://papermc.io/api/v2/projects/paper | jq -r '.versions[-1]')
     fi
     local LATEST_BUILD=$(curl -s "https://papermc.io/api/v2/projects/paper/versions/${PAPER_VERSION}" | jq -r '.builds[-1]')
@@ -150,7 +143,6 @@ install_purpur() {
     local MC_VERSION="$1"
     local PURPUR_VERSION=$(curl -s https://api.purpurmc.org/v2/purpur | jq -r '.versions[]' | grep "$MC_VERSION" | tail -n1)
     if [ -z "$PURPUR_VERSION" ]; then
-        echo "No matching Purpur version for $MC_VERSION found. Using latest."
         PURPUR_VERSION=$(curl -s https://api.purpurmc.org/v2/purpur | jq -r '.versions[-1]')
     fi
     echo "Installing Purpur ${PURPUR_VERSION}"
@@ -161,7 +153,6 @@ install_spigot() {
     local MC_VERSION="$1"
     echo "Installing Spigot placeholder for $MC_VERSION"
     echo "Please integrate Spigot BuildTools if needed."
-    # Kein echter Download hier, da Spigot kein direktes Download-API hat.
 }
 
 install_vanilla() {
@@ -184,14 +175,17 @@ install_forge() {
 install_fabric() {
     local MC_VERSION="$1"
     local FABRIC_VERSION="$2"
-    echo "Fabric installation placeholder. Integrate actual fabric installer logic soon."
+    echo "Installing Fabric Loader ${FABRIC_VERSION} for Minecraft ${MC_VERSION}"
+    local FABRIC_PROFILE_URL="https://meta.fabricmc.net/v2/versions/loader/${MC_VERSION}/${FABRIC_VERSION}/profile/json"
+    download_file "${FABRIC_PROFILE_URL}" "fabric-installer.json"
+    # Placeholder für tatsächliche Fabric-Installation
+    echo "Fabric installation placeholder. Integrate actual fabric installer logic."
 }
 
 install_neoforge() {
     local MC_VERSION="$1"
     local NEOFORGE_VERSION="$2"
     echo "Installing NeoForge ${MC_VERSION}-${NEOFORGE_VERSION}"
-    # Analog zu Forge:
     local DOWNLOAD_URL="https://maven.neoforged.net/net/neoforged/neoforge/${MC_VERSION}-${NEOFORGE_VERSION}/neoforge-${MC_VERSION}-${NEOFORGE_VERSION}-installer.jar"
     download_file "${DOWNLOAD_URL}" "neoforge-installer.jar"
     java -jar neoforge-installer.jar --installServer
@@ -201,7 +195,6 @@ install_neoforge() {
 
 install_velocity() {
     local MC_VERSION="$1"
-    # Velocity MC-Version ist eigentlich nicht zwingend relevant, da Proxy.
     local VELOCITY_VERSION=$(curl -s https://api.papermc.io/v2/projects/velocity | jq -r '.versions[-1]')
     local LATEST_BUILD=$(curl -s "https://api.papermc.io/v2/projects/velocity/versions/${VELOCITY_VERSION}" | jq -r '.builds[-1]')
     echo "Installing Velocity ${VELOCITY_VERSION}-${LATEST_BUILD}"
@@ -223,14 +216,12 @@ install_bungeecord() {
     download_file "https://ci.md-5.net/job/BungeeCord/lastSuccessfulBuild/artifact/bootstrap/target/BungeeCord.jar" "server.jar"
 }
 
-
 ############################################
 # Hilfsfunktionen Menü
 ############################################
 
 save_selection() {
     # Parameter: category, software, mc_version, subversion
-    # z.B. "Java:Forge:1.20.1:46.0.14"
     echo "$1:$2:$3:$4" > "$SELECTION_FILE"
     echo "Selection saved: $1 - $2 - $3 - $4"
 }
@@ -295,7 +286,7 @@ menu_minecraft_java() {
            create_start_script
            exit 0
            ;;
-        6) # Fabric: erst Subversion wählen
+        6) # Fabric: Subversion wählen
            FABRIC_VERSION=$(select_fabric_version "$MC_VERSION")
            install_fabric "$MC_VERSION" "$FABRIC_VERSION"
            save_selection "Java" "Fabric" "$MC_VERSION" "$FABRIC_VERSION"
@@ -333,19 +324,15 @@ main_menu() {
     esac
 }
 
-# Prüfen, ob schon eine Auswahl getroffen wurde
 if [ -f "$SELECTION_FILE" ]; then
-    # Datei existiert, also direkt start.sh ausführen (sofern start.sh existieren)
-    if [ -f "start.sh" ]; then
+    if[ -f "start.sh" ]; then
         echo "Using previously selected server configuration..."
         ./start.sh
         exit 0
     else
-        # Falls aus irgendeinem Grund start.sh fehlt, neu installieren
         rm -f "$SELECTION_FILE"
         main_menu
     fi
 else
-    # Keine Auswahl -> Menü anzeigen
     main_menu
 fi
